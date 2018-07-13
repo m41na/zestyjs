@@ -1,0 +1,13 @@
+.classpath
+.project
+.vscode
+.settings
+**/.settings
+target/
+**/target
+*.class
+*.log
+*.war
+/data/**
+nbactions.xml
+/nbproject/

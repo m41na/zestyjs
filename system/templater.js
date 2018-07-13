@@ -262,6 +262,7 @@ function expandElse(start, stack, context, keep) {
             entry = stack[index];
             continue;
         } else if (entry.matched.startsWith("@else{")) {
+            throw Error("encountered illegal @else{...} inside @else{} block");
             break;
         } else {
             if (!found) {
@@ -294,8 +295,8 @@ function forParams(expr) {
     }
 }
 
-console.log(forParams("abs, xyc in letters"));
-console.log(forParams("abc in letters"));
+//console.log(forParams("abs, xyc in letters"));
+//console.log(forParams("abc in letters"));
 
 function resFor() {
     return function(elements, stack, cursor, key) {
@@ -319,16 +320,20 @@ function expandFor(start, stack, context) {
     var index = start;
     var local = [];
     var entry = stack[index];
-    var params = forParams(entry.value);
-    //drop entry
     stack.splice(index, 1);
-    while (entry.matched != "@end{}") {
+
+    var params = forParams(entry.value);
+    //elements, stack, cursor, key
+    var depth = 0;
+    while (depth > 0 || entry.matched != "@end{}") {
         if (entry.matched.startsWith("@if{")) {
-            var if_res = expandIf(index, stack, context);
-            index = if_res.index;
+            depth++;
         }
-        local.push(stack[index]);
-        entry = stack[++index];
+        if (entry.matched == "@end{}" && depth > 0) {
+            depth--;
+        }
+        local = local.concat(stack.splice(index, 1));
+        entry = stack[index];
     }
     //expand
     var for_res = resFor().call(this, context[params.elements], local, params.cursor, params.key);
@@ -345,7 +350,7 @@ var simple2 = "do eval @eval{(xyz * 2) > 10} start if @if{list[2] >= 30} if matc
 var simple3 = "do eval @eval{(xyz ^ 2) > 10} start if @if{list[2] == 25} if matched @else{list[2] == 40} elif matched @else{} else matched @end{} retrieve value @{profile.name}";
 var simple4 = "do eval @eval{(xyz - 2) > 10} start if @if{list[2] >= 30} if matched @else{list[2] == 40} elif matched @else{} else matched @end{} retrieve value @{profile.name}";
 var simple5 = "do eval @eval{(xyz + 2) > 10} start for @for{a in list} <p>@{a}</p> @end{} end for @end{} retrieve value @{profile.name}";
-var simple6 = "do eval @eval{(xyz - 2) > 10} start for @for{a in list} <p>@{a}</p> start if @if{a > 30} if matched @else{a < 30} elif matched @else{} else matched @end{} end for @end{} retrieve value @{profile.name}";
+var simple6 = "do eval @eval{(xyz - 2) > 10} start for @for{elem, index in list} <p data-index='@{index}'>@{elem}</p> start if @if{elem > 30} if matched @else{elem < 30} elif matched @else{} else matched @end{} end for @end{} retrieve value @{profile.name}";
 
 console.log(expandTemplate(0, splitTemplate(simple6), model).reduce(function(acc, curr) {
     return acc.concat(curr.value);
