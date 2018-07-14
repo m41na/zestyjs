@@ -30,6 +30,15 @@ function objProp(path, obj) {
     }, obj);
 }
 
+function setProp() {
+    return function(expr, ctx) {
+        var parts = expr.split("=");
+        var prop = parts[0].trim();
+        ctx[prop] = eval(parts[1].trim());
+        return prop;
+    }
+}
+
 //console.log(objProp('age', { age: 30 }));
 //console.log(objProp('profile[\'reg-addr\'][0].type', context));
 
@@ -64,6 +73,7 @@ function resExpr() {
 //console.log(resExpr().call(this, "age > 30", { name: 'mike', age: 40 }));
 
 var cozy = [
+    "@wrap{eazy}",
     "<div class='person'>",
     "<p data-doe='@{profile.doe}'>@{name}</p>",
     "@if{profile.age < 20}",
@@ -77,6 +87,11 @@ var cozy = [
     "@end{}",
     "</ul>",
     "<hr/>",
+    "@incl{dozy}",
+    "</div>"
+].join("");
+
+var dozy = [
     "<ul class='sports'>",
     "@for{sport in sports}",
     "@if{sport.rank == 1}",
@@ -89,21 +104,22 @@ var cozy = [
     "<li data-rank='none'>@{sport.name}</li>",
     "@end{}",
     "@end{}",
-    "</ul>",
-    "</div>"
+    "</ul>"
 ].join("");
 
+var eazy = "<div id='parent'>@wrap{}</div>";
+
 function splitTemplate(template) {
-    var regex = /(@\{(.+?)\})|(@if\{(.+?)\})|(@else\{(.*?)\})|(@end\{\})|(@for\{(.+?)\})|(@eval\{(.+?)\})/g;
+    var regex = /(@\{(.+?)\})|(@if\{(.+?)\})|(@else\{(.*?)\})|(@end\{\})|(@for\{(.+?)\})|(@eval\{(.+?)\})|(@set\{(\w+?=.+?)\})|(@incl\{(.+?)\})|(@wrap\{(.*?)\})/g;
     var match;
     var start = 0;
     var stack = [];
-
+    //process
     while ((match = regex.exec(template)) != null) {
-        // for (var i in match) {
-        //     console.log("match[" + i + "]->" + match[i]);
-        // }
-        var val, evaled, istrue;
+        for (var i in match) {
+            console.log("match[" + i + "]->" + match[i]);
+        }
+        var val;
         var matched = match[0];
 
         var text = template.substring(start, match.index);
@@ -116,10 +132,6 @@ function splitTemplate(template) {
             //must be an expression
             val = match[2];
             console.log('@{} expr matched -> ' + match[1]);
-            stack.push({ matched: matched, value: val });
-        } else if (matched.startsWith("@eval{")) {
-            val = match[11];
-            console.log('@eval matched -> ' + match[10]);
             stack.push({ matched: matched, value: val });
         } else if (matched.startsWith("@if{")) {
             val = match[4];
@@ -139,6 +151,22 @@ function splitTemplate(template) {
             val = match[9];
             console.log("@for condition matched -> " + match[8]);
             stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@eval{")) {
+            val = match[11];
+            console.log('@eval matched -> ' + match[10]);
+            stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@set{")) {
+            val = match[13];
+            console.log("@set statement matched -> " + match[12]);
+            stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@incl{")) {
+            val = match[15];
+            console.log("@incl statement matched -> " + match[14]);
+            stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@wrap{")) {
+            val = match[17];
+            console.log("@wrap statement matched -> " + match[16]);
+            stack.push({ matched: matched, value: val });
         } else {
             throw Error('unexpected token matched -> ' + matched);
         }
@@ -152,7 +180,6 @@ function splitTemplate(template) {
         console.log('text before end of template -> ' + text);
         stack.push({ matched: "", value: text });
     }
-
     //return
     return stack;
 }
@@ -169,11 +196,19 @@ function expandTemplate(start, stack, context) {
             index = for_res.index;
         } else if (entry.matched == "@end{}") {
             console.log("handle @end{} logic");
+        } else if (entry.matched.startsWith("@incl{")) {
+            var incl_res = expandIncl(index, stack, context);
+            index = incl_res.index;
+        } else if (entry.matched.startsWith("@wrap{")) {
+            var wrap_res = expandWrap(index, stack, context);
+            index = wrap_res.index;
         } else {
             if (entry.matched.startsWith("@{")) {
                 entry.value = resProp().call(this, entry.value, context);
             } else if (entry.matched.startsWith("@eval{")) {
                 entry.value = resExpr().call(this, entry.value, context);
+            } else if (entry.matched.startsWith("@set{")) {
+                entry.value = setProp().call(this, entry.value, context);
             } else {
                 console.log("must be text only -> " + entry.value);
             }
@@ -185,7 +220,10 @@ function expandTemplate(start, stack, context) {
 
 function expandIf(start, stack, context) {
     var index = start;
-    var found = false;
+    //splice @if{} from stack
+    var if_tag = stack.splice(index, 1)[0];
+    var found = resExpr().call(this, if_tag.value, context);
+    //process stack
     var entry = stack[index];
     while (entry.matched != "@end{}") {
         if (entry.matched.startsWith("@if{")) {
@@ -197,6 +235,7 @@ function expandIf(start, stack, context) {
         } else if (entry.matched == "@else{}") {
             var else_res = expandElse(index, stack, context, !found);
             index = else_res.index;
+            found = else_res.found;
             entry = stack[index];
             continue;
         } else if (entry.matched.startsWith("@else{")) {
@@ -209,6 +248,12 @@ function expandIf(start, stack, context) {
                 stack.splice(index, 1);
                 entry = stack[index];
                 continue;
+            } else if (entry.matched.startsWith("@{")) {
+                entry.value = resProp().call(this, entry.value, context);
+            } else if (entry.matched.startsWith("@eval{")) {
+                entry.value = resExpr().call(this, entry.value, context);
+            } else if (entry.matched.startsWith("@set{")) {
+                entry.value = setProp().call(this, entry.value, context);
             }
         }
         entry = stack[++index];
@@ -219,27 +264,32 @@ function expandIf(start, stack, context) {
 
 function expandElIf(start, stack, context) {
     var index = start;
-    var found = false;
+    //splice @elif{} from stack
+    var elif_tag = stack.splice(index, 1)[0];
+    var found = resExpr().call(this, elif_tag.value, context);
+    //process stack
     var entry = stack[index];
-
     while (entry.matched != "@end{}") {
         if (entry.matched.startsWith("@if{")) {
             var if_res = expandIf(index, stack, context);
             index = if_res.index;
+            found = if_res.found;
             continue;
         } else if (entry.matched == "@else{}") {
             break;
         } else if (entry.matched.startsWith("@else{")) {
-            entry.value = resExpr().call(this, entry.value, context);
-            found = entry.value;
-            stack.splice(index, 1);
-            entry = stack[index];
-            continue;
+            break;
         } else {
             if (!found) {
                 stack.splice(index, 1);
                 entry = stack[index];
                 continue;
+            } else if (entry.matched.startsWith("@{")) {
+                entry.value = resProp().call(this, entry.value, context);
+            } else if (entry.matched.startsWith("@eval{")) {
+                entry.value = resExpr().call(this, entry.value, context);
+            } else if (entry.matched.startsWith("@set{")) {
+                entry.value = setProp().call(this, entry.value, context);
             }
         }
         entry = stack[++index];
@@ -249,12 +299,16 @@ function expandElIf(start, stack, context) {
 
 function expandElse(start, stack, context, keep) {
     var index = start;
-    var found = false;
+    var found = keep;
+    //splice @else{} from stack
+    stack.splice(index, 1);
+    //process stack
     var entry = stack[index];
     while (entry.matched != "@end{}") {
         if (entry.matched.startsWith("@if{")) {
             var if_res = expandIf(index, stack, context);
             index = if_res.index;
+            found = if_res.found;
             continue;
         } else if (entry.matched == "@else{}") {
             found = keep;
@@ -269,6 +323,12 @@ function expandElse(start, stack, context, keep) {
                 stack.splice(index, 1);
                 entry = stack[index];
                 continue;
+            } else if (entry.matched.startsWith("@{")) {
+                entry.value = resProp().call(this, entry.value, context);
+            } else if (entry.matched.startsWith("@eval{")) {
+                entry.value = resExpr().call(this, entry.value, context);
+            } else if (entry.matched.startsWith("@set{")) {
+                entry.value = setProp().call(this, entry.value, context);
             }
         }
         entry = stack[++index];
@@ -302,7 +362,8 @@ function resFor() {
     return function(elements, stack, cursor, key) {
         var result = [];
         for (var index in elements) {
-            var local_copy = JSON.parse(JSON.stringify(stack))
+            var local_copy = JSON.parse(JSON.stringify(stack));
+            //var local_copy = stack.slice(0);
             var ctx = {};
             ctx[cursor] = elements[index];
             if (key) ctx[key] = index;
@@ -319,11 +380,11 @@ function resFor() {
 function expandFor(start, stack, context) {
     var index = start;
     var local = [];
+    //splice @for tag to extract [elements, stack, cursor, key]
+    var for_tag = stack.splice(index, 1)[0];
+    var params = forParams(for_tag.value);
+    //process stack
     var entry = stack[index];
-    stack.splice(index, 1);
-
-    var params = forParams(entry.value);
-    //elements, stack, cursor, key
     var depth = 0;
     while (depth > 0 || entry.matched != "@end{}") {
         if (entry.matched.startsWith("@if{")) {
@@ -335,6 +396,8 @@ function expandFor(start, stack, context) {
         local = local.concat(stack.splice(index, 1));
         entry = stack[index];
     }
+    //drop @end tag which belongs to @for
+    stack.splice(index, 1);
     //expand
     var for_res = resFor().call(this, context[params.elements], local, params.cursor, params.key);
     //insert array into stack array
@@ -352,6 +415,20 @@ var simple4 = "do eval @eval{(xyz - 2) > 10} start if @if{list[2] >= 30} if matc
 var simple5 = "do eval @eval{(xyz + 2) > 10} start for @for{a in list} <p>@{a}</p> @end{} end for @end{} retrieve value @{profile.name}";
 var simple6 = "do eval @eval{(xyz - 2) > 10} start for @for{elem, index in list} <p data-index='@{index}'>@{elem}</p> start if @if{elem > 30} if matched @else{elem < 30} elif matched @else{} else matched @end{} end for @end{} retrieve value @{profile.name}";
 
-console.log(expandTemplate(0, splitTemplate(simple6), model).reduce(function(acc, curr) {
+function expandIncl(start, stack, context) {
+    var index = start;
+    //splice @if{} from stack
+    var incl_tag = stack.splice(index, 1)[0];
+    var incl = expandTemplate(0, splitTemplate(eval(incl_tag.value)), context);
+    stack.splice.apply(stack, [index, 0].concat(incl));
+    return { index: (index + incl.length) };
+}
+
+function expandWrap(start, stack, content) {
+    console.log('wrap content here');
+    return start;
+}
+
+console.log(expandTemplate(0, splitTemplate(eazy), context).reduce(function(acc, curr) {
     return acc.concat(curr.value);
 }, ""));
