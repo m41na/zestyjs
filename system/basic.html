@@ -55,14 +55,14 @@
                     name: 'field'
                 }, {
                     rank: 3,
-                    name: 'soccer'
+                    name: 'hockey'
                 }, {
                     rank: 4,
                     name: 'biking'
                 }]
             };
             var target = document.querySelector(selector);
-            var expanded = expandTemplate(0, splitTemplate(he.decode(target.outerHTML)), model).reduce(function(acc, curr) {
+            var expanded = splitExpand(he.decode(target.outerHTML))(model).reduce(function(acc, curr) {
                 return acc.concat(curr.value || "");
             }, "");
             console.log(expanded);

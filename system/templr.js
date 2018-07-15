@@ -17,7 +17,7 @@ var context = {
     sports: [
         { rank: 1, name: 'rugby' },
         { rank: 2, name: 'field' },
-        { rank: 3, name: 'soccer' }
+        { rank: 3, name: 'hockey' }
     ]
 };
 
@@ -30,8 +30,8 @@ function objProp(path, obj) {
     }, obj);
 }
 
-function setProp() {
-    return function(expr, ctx) {
+function setProp(expr) {
+    return function(ctx) {
         var parts = expr.split("=");
         var prop = parts[0].trim();
         ctx[prop] = eval(parts[1].trim());
@@ -42,18 +42,18 @@ function setProp() {
 //console.log(objProp('age', { age: 30 }));
 //console.log(objProp('profile[\'reg-addr\'][0].type', context));
 
-function resProp() {
-    return function(expr, ctx) {
+function resProp(expr) {
+    return function(ctx) {
         return objProp(expr, ctx);
     };
 }
 
-//console.log(resProp().call(this, 'profile[age]', context));
-//console.log(resProp().call(this, 'profile[\'reg-addr\'][0].type', context));
-//console.log(resProp().call(this, 'profile[reg-addr][1].type', context));
+//console.log(resProp('profile[age]')(context));
+//console.log(resProp('profile[\'reg-addr\'][0].type')(context));
+//console.log(resProp('profile[reg-addr][1].type')(context));
 
-function resExpr() {
-    return function(expr, ctx) {
+function resExpr(expr) {
+    return function(ctx) {
         //padd with a space at the end for regex to match
         var exec = expr.concat(' ').replace(/(\w+(\.|\[).*?)\s/g, function(m, p) {
             return objProp(p, ctx);
@@ -68,12 +68,11 @@ function resExpr() {
     };
 }
 
-//console.log(resExpr().call(this, 'ctx.age > 30', { ctx: { name: 'mike', age: 20 } }));
-//console.log(resExpr().call(this, "ctx['age'] > 30 && ctx.age > 35", { ctx: { name: 'mike', age: 40 } }));
-//console.log(resExpr().call(this, "age > 30", { name: 'mike', age: 40 }));
+//console.log(resExpr('ctx.age > 30')({ ctx: { name: 'mike', age: 20 } }));
+//console.log(resExpr("ctx['age'] > 30 && ctx.age > 35")({ ctx: { name: 'mike', age: 40 } }));
+//console.log(resExpr("age > 30")({ name: 'mike', age: 40 }));
 
 var cozy = [
-    "@wrap{eazy}",
     "<div class='person'>",
     "<p data-doe='@{profile.doe}'>@{name}</p>",
     "@if{profile.age < 20}",
@@ -107,10 +106,14 @@ var dozy = [
     "</ul>"
 ].join("");
 
-var eazy = "<div id='parent'>@wrap{}</div>";
+var eazy = "<div id='parent'>@slot{}child content@slot{/}</div>";
+
+function loadTemplate(name) {
+
+}
 
 function splitTemplate(template) {
-    var regex = /(@\{(.+?)\})|(@if\{(.+?)\})|(@else\{(.*?)\})|(@end\{\})|(@for\{(.+?)\})|(@eval\{(.+?)\})|(@set\{(\w+?=.+?)\})|(@incl\{(.+?)\})|(@wrap\{(.*?)\})/g;
+    var regex = /(@\{(.+?)\})|(@if\{(.+?)\})|(@else\{(.*?)\})|(@end\{\})|(@for\{(.+?)\})|(@eval\{(.+?)\})|(@set\{(\w+?=.+?)\})|(@incl\{(.+?)\})|(@extend\{(.*?)\})|(@block\{(.*?)\})|(@super\{(\s*?)\})|(@slot\{(.*?)\})/g;
     var match;
     var start = 0;
     var stack = [];
@@ -138,15 +141,17 @@ function splitTemplate(template) {
             console.log("@if condition matched -> " + match[3]);
             stack.push({ matched: matched, value: val });
         } else if (matched == "@else{}") {
+            val = "";
             console.log("last @else{} condition reached -> " + match[5]);
-            stack.push({ matched: matched, value: "" });
+            stack.push({ matched: matched, value: val });
         } else if (matched.startsWith("@else{")) {
             val = match[6];
             console.log("@else{expr} condition matched -> " + match[5]);
             stack.push({ matched: matched, value: val });
         } else if (matched == "@end{}") {
+            val = "";
             console.log('reached @end of block -> ' + match[7]);
-            stack.push({ matched: matched, value: "" });
+            stack.push({ matched: matched, value: val });
         } else if (matched.startsWith("@for{")) {
             val = match[9];
             console.log("@for condition matched -> " + match[8]);
@@ -163,14 +168,25 @@ function splitTemplate(template) {
             val = match[15];
             console.log("@incl statement matched -> " + match[14]);
             stack.push({ matched: matched, value: val });
-        } else if (matched.startsWith("@wrap{")) {
+        } else if (matched.startsWith("@extend{")) {
             val = match[17];
-            console.log("@wrap statement matched -> " + match[16]);
+            console.log('@extend{} directive matched -> ' + match[16]);
+            stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@block{")) {
+            val = match[19];
+            console.log("@block directive matched -> " + match[18]);
+            stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@super{")) {
+            val = match[21];
+            console.log("@super directive matched -> " + match[20]);
+            stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@slot{")) {
+            val = match[23];
+            console.log("@slot directive matched -> " + match[22]);
             stack.push({ matched: matched, value: val });
         } else {
             throw Error('unexpected token matched -> ' + matched);
         }
-
         //reset start
         start = regex.lastIndex;
     }
@@ -199,16 +215,16 @@ function expandTemplate(start, stack, context) {
         } else if (entry.matched.startsWith("@incl{")) {
             var incl_res = expandIncl(index, stack, context);
             index = incl_res.index;
-        } else if (entry.matched.startsWith("@wrap{")) {
-            var wrap_res = expandWrap(index, stack, context);
-            index = wrap_res.index;
+        } else if (entry.matched.startsWith("@extend{")) {
+            var ext_res = expandExtend(index, stack, context);
+            index = ext_res.index;
         } else {
             if (entry.matched.startsWith("@{")) {
-                entry.value = resProp().call(this, entry.value, context);
+                entry.value = resProp(entry.value)(context);
             } else if (entry.matched.startsWith("@eval{")) {
-                entry.value = resExpr().call(this, entry.value, context);
+                entry.value = resExpr(entry.value)(context);
             } else if (entry.matched.startsWith("@set{")) {
-                entry.value = setProp().call(this, entry.value, context);
+                entry.value = setProp(entry.value)(context);
             } else {
                 console.log("must be text only -> " + entry.value);
             }
@@ -218,16 +234,22 @@ function expandTemplate(start, stack, context) {
     return stack;
 }
 
+function splitExpand(template) {
+    return function(context) {
+        return expandTemplate(0, splitTemplate(template), context);
+    }
+}
+
 function expandIf(start, stack, context) {
     var index = start;
     //splice @if{} from stack
     var if_tag = stack.splice(index, 1)[0];
-    var found = resExpr().call(this, if_tag.value, context);
+    var found = resExpr(if_tag.value)(context);
     //process stack
     var entry = stack[index];
     while (entry.matched != "@end{}") {
         if (entry.matched.startsWith("@if{")) {
-            entry.value = resExpr().call(this, entry.value, context);
+            entry.value = resExpr(entry.value)(context);
             found = entry.value;
             stack.splice(index, 1);
             entry = stack[index];
@@ -249,11 +271,11 @@ function expandIf(start, stack, context) {
                 entry = stack[index];
                 continue;
             } else if (entry.matched.startsWith("@{")) {
-                entry.value = resProp().call(this, entry.value, context);
+                entry.value = resProp(entry.value)(context);
             } else if (entry.matched.startsWith("@eval{")) {
-                entry.value = resExpr().call(this, entry.value, context);
+                entry.value = resExpr(entry.value)(context);
             } else if (entry.matched.startsWith("@set{")) {
-                entry.value = setProp().call(this, entry.value, context);
+                entry.value = setProp(entry.value)(context);
             }
         }
         entry = stack[++index];
@@ -266,7 +288,7 @@ function expandElIf(start, stack, context) {
     var index = start;
     //splice @elif{} from stack
     var elif_tag = stack.splice(index, 1)[0];
-    var found = resExpr().call(this, elif_tag.value, context);
+    var found = resExpr(elif_tag.value)(context);
     //process stack
     var entry = stack[index];
     while (entry.matched != "@end{}") {
@@ -285,11 +307,11 @@ function expandElIf(start, stack, context) {
                 entry = stack[index];
                 continue;
             } else if (entry.matched.startsWith("@{")) {
-                entry.value = resProp().call(this, entry.value, context);
+                entry.value = resProp(entry.value)(context);
             } else if (entry.matched.startsWith("@eval{")) {
-                entry.value = resExpr().call(this, entry.value, context);
+                entry.value = resExpr(entry.value)(context);
             } else if (entry.matched.startsWith("@set{")) {
-                entry.value = setProp().call(this, entry.value, context);
+                entry.value = setProp(entry.value)(context);
             }
         }
         entry = stack[++index];
@@ -324,11 +346,11 @@ function expandElse(start, stack, context, keep) {
                 entry = stack[index];
                 continue;
             } else if (entry.matched.startsWith("@{")) {
-                entry.value = resProp().call(this, entry.value, context);
+                entry.value = resProp(entry.value)(context);
             } else if (entry.matched.startsWith("@eval{")) {
-                entry.value = resExpr().call(this, entry.value, context);
+                entry.value = resExpr(entry.value)(context);
             } else if (entry.matched.startsWith("@set{")) {
-                entry.value = setProp().call(this, entry.value, context);
+                entry.value = setProp(entry.value)(context);
             }
         }
         entry = stack[++index];
@@ -358,8 +380,8 @@ function forParams(expr) {
 //console.log(forParams("abs, xyc in letters"));
 //console.log(forParams("abc in letters"));
 
-function resFor() {
-    return function(elements, stack, cursor, key) {
+function resFor(elements, cursor, key) {
+    return function(stack) {
         var result = [];
         for (var index in elements) {
             var local_copy = JSON.parse(JSON.stringify(stack));
@@ -372,10 +394,6 @@ function resFor() {
         return result;
     };
 }
-
-//console.log(resFor().call(this, context.profile['reg-addr'], '@{addr.type}', 'addr'));
-//console.log(resFor().call(this, context['skills'], '@{skill}', 'skill'));
-//console.log(resFor().call(this, context.sports, "<li data-num='@{count}'>@{sport.name}</li>", 'sport', 'count'));
 
 function expandFor(start, stack, context) {
     var index = start;
@@ -399,7 +417,7 @@ function expandFor(start, stack, context) {
     //drop @end tag which belongs to @for
     stack.splice(index, 1);
     //expand
-    var for_res = resFor().call(this, context[params.elements], local, params.cursor, params.key);
+    var for_res = resFor(context[params.elements], params.cursor, params.key)(local);
     //insert array into stack array
     stack.splice.apply(stack, [index, 0].concat(for_res));
     return { index: (index + for_res.length) };
@@ -419,16 +437,163 @@ function expandIncl(start, stack, context) {
     var index = start;
     //splice @if{} from stack
     var incl_tag = stack.splice(index, 1)[0];
-    var incl = expandTemplate(0, splitTemplate(eval(incl_tag.value)), context);
+    var incl = splitExpand(eval(incl_tag.value))(context);
     stack.splice.apply(stack, [index, 0].concat(incl));
     return { index: (index + incl.length) };
 }
 
-function expandWrap(start, stack, content) {
-    console.log('wrap content here');
-    return start;
+// console.log(splitExpand(eazy)(context).reduce(function(acc, curr) {
+//     return acc.concat(curr.value);
+// }, ""));
+
+var content_html = [
+    "@extend{layout_html}",
+
+    "@block{ title } Content Layout @block{}",
+
+    "@block{ main }",
+    "<div id=\"content\">",
+    "@super{}",
+    "<ul id=\"listing\">",
+    "@for{sport, index in sports}",
+    "<li><span>@eval{index + 1}</span> - @{sport.name}</li>",
+    "@end{}",
+    "</ul>",
+    "</div > ",
+    "@block{}",
+
+    "@extend{}"
+].join("");
+
+var simple_html = [
+    "@extend{layout_html}",
+
+    "@block{ title } Simple Layout @block{}",
+
+    "@block{ main }",
+    "<div id=\"content\">",
+    "@super{}",
+    "<p>It's your birthday!!</p>",
+    "</div > ",
+    "@block{}",
+
+    "@extend{}"
+].join("");
+
+var layout_html = [
+    "<div id=\"layout\">",
+
+    "<div id=\"title\">@slot{title}Placeholder Title@slot{}</div>",
+
+    "<div id=\"app\">",
+    "@slot{ main }",
+    "<h3>Messages</h3>",
+    "@slot{}",
+    "</div >",
+
+    "</div>"
+].join("");
+
+//Now dealing with layouts
+// console.log(splitTemplate(simple_html).reduce(function(acc, curr) {
+//     return acc.concat(curr.value);
+// }, ""));
+
+// console.log(splitTemplate(layout_html).reduce(function(acc, curr) {
+//     return acc.concat(curr.value);
+// }, ""));
+
+// console.log(expandExtend(splitTemplate(simple_html)).reduce(function(acc, curr) {
+//     return acc.concat(curr.value);
+// }, ""));
+
+function expandExtend(stack) {
+    var index = 0;
+    //store @extend tag
+    var ext_tag = stack.splice(index, 1)[0];
+
+    //read child first
+    var block;
+    var blocks = {};
+    var supers = {};
+    var block_index;
+    //find block elements
+    while (index < stack.length) {
+        var entry = stack[index];
+        if (entry.matched == "@extend{}") {
+            console.log("end of " + entry.matched + " directive reached");
+            stack.splice(index, 1);
+            break;
+        } else if (entry.matched.startsWith("@extend{")) {
+            console.log("must be a nested @extend. Go back to splitTemplate()");
+            throw Error('nested @extend not currently implemented');
+        } else if (entry.matched == "@block{}") {
+            console.log("end of '" + block + "' @block definition reached");
+            blocks[block] = stack.splice(block_index, (index - block_index));
+            stack.splice(block_index, 1);
+            index = block_index;
+            continue;
+        } else if (entry.matched == "@super{}") {
+            console.log("@super directive encoutered for '" + block + "'block");
+            var insert_index = index;
+            supers[block] = function(array) {
+                blocks[block].splice.apply(blocks[block], [insert_index, 1].concat([array]));
+            };
+            stack.splice(index, 1);
+            continue;
+        } else if (entry.matched.startsWith("@block{")) {
+            block = entry.value.trim();
+            block_index = index;
+            console.log("start of '" + block + "' @block definition");
+            stack.splice(index, 1);
+            continue;
+        } else {
+            console.log("skipping item");
+        }
+        ++index;
+    }
+
+    //split layout and merge blocks
+    index = 0;
+    var slot, slot_index;
+    var layout = splitTemplate(eval(ext_tag.value));
+    while (index < layout.length) {
+        var entry = layout[index];
+        if (entry.matched == "@slot{}") {
+            console.log("end of '" + slot + "' @slot reached");
+            //insert @super content into block
+            if (supers[slot]) {
+                supers[slot](layout.splice(slot_index, (index - slot_index)));
+            }
+            //replace slot with @block content
+            if (blocks[slot]) {
+                layout.splice.apply(layout, [slot_index, (index - slot_index)].concat(blocks[slot]));
+            } else {
+                throw Error("There is no block defined for '" + slot + "' slot");
+            }
+            index = slot_index + blocks[slot].length;
+            layout.splice(index, 1);
+            continue;
+        } else if (entry.matched.startsWith("@slot{")) {
+            console.log("start of '" + entry.matched + "' encountered");
+            layout.splice(index, 1);
+            slot = entry.value.trim();
+            slot_index = index;
+            continue;
+        } else {
+            console.log("skip item");
+        }
+        index++;
+    }
+    return stack;
 }
 
-console.log(expandTemplate(0, splitTemplate(eazy), context).reduce(function(acc, curr) {
+function splitExpandLayout(template) {
+    return function(context) {
+        return expandTemplate(0, expandExtend(splitTemplate(template)), context);
+    }
+}
+
+console.log(splitExpandLayout(content_html)(context).reduce(function(acc, curr) {
     return acc.concat(curr.value);
 }, ""));
