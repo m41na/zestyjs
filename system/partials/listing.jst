@@ -1,0 +1,14 @@
+<template id="listing">
+    @extend{tpl:#main}      
+    @block{listing}
+    <ul id="listing-div">
+        @for{sport, index in sports} @if{(index % 3 ) > 0}
+        <li style="background-color:orange;">
+            <span>@eval{index + 1}</span> - @{sport.name}</li>
+        @else{}
+        <li style="background-color:indigo;">
+            <span>@eval{index + 1}</span> - @{sport.name}</li>
+        @end{} @end{}
+    </ul>
+    @block{} @extend{}
+</template>

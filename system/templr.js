@@ -109,7 +109,19 @@ var dozy = [
 var eazy = "<div id='parent'>@slot{}child content@slot{/}</div>";
 
 function loadTemplate(name) {
-
+    var index;
+    if((index = name.search(/^dom:/)) > -1){
+        return he.decode(document.querySelector(name.substring('dom:'.length)).innerHTML);
+    }
+    else if((index = name.search(/^tpl:/)) > -1){
+        return he.decode(document.querySelector(name.substring('tpl:'.length)).innerHTML);
+    }
+    else if((index = name.search(/^fs:/)) > -1){
+        throw Error('loading from file system not yet implemented');
+    }
+    else{
+        return eval(name);
+    }
 }
 
 function splitTemplate(template) {
@@ -126,7 +138,7 @@ function splitTemplate(template) {
         var matched = match[0];
 
         var text = template.substring(start, match.index);
-        if (text.length > 0) {
+        if (text.trim().length > 0) {
             console.log('text before next match -> ' + text);
             stack.push({ matched: "", value: text });
         }
@@ -192,7 +204,7 @@ function splitTemplate(template) {
     }
     //get last section
     text = template ? template.substring(start) : "";
-    if (text.length > 0) {
+    if (text.trim().length > 0) {
         console.log('text before end of template -> ' + text);
         stack.push({ matched: "", value: text });
     }
@@ -437,7 +449,7 @@ function expandIncl(start, stack, context) {
     var index = start;
     //splice @if{} from stack
     var incl_tag = stack.splice(index, 1)[0];
-    var incl = splitExpand(eval(incl_tag.value))(context);
+    var incl = splitExpand(loadTemplate(incl_tag.value))(context);
     stack.splice.apply(stack, [index, 0].concat(incl));
     return { index: (index + incl.length) };
 }
@@ -526,7 +538,7 @@ function expandExtend(stack) {
             break;
         } else if (entry.matched.startsWith("@extend{")) {
             console.log("must be a nested @extend. Go back to splitTemplate()");
-            throw Error('nested @extend not currently implemented');
+            throw Error('nested @extend not currently a valid construct');
         } else if (entry.matched == "@block{}") {
             console.log("end of '" + block + "' @block definition reached");
             blocks[block] = stack.splice(block_index, (index - block_index));
@@ -537,7 +549,7 @@ function expandExtend(stack) {
             console.log("@super directive encoutered for '" + block + "'block");
             var insert_index = index;
             supers[block] = function(array) {
-                blocks[block].splice.apply(blocks[block], [insert_index, 1].concat([array]));
+                blocks[block].splice.apply(blocks[block], [insert_index, 1].concat(array));
             };
             stack.splice(index, 1);
             continue;
@@ -555,8 +567,9 @@ function expandExtend(stack) {
 
     //split layout and merge blocks
     index = 0;
+    var ext_name;
     var slot, slot_index;
-    var layout = splitTemplate(eval(ext_tag.value));
+    var layout = splitTemplate(loadTemplate(ext_tag.value));
     while (index < layout.length) {
         var entry = layout[index];
         if (entry.matched == "@slot{}") {
@@ -580,12 +593,23 @@ function expandExtend(stack) {
             slot = entry.value.trim();
             slot_index = index;
             continue;
+        } else if (entry.matched == "@extend{}") {
+            console.log("must be end of a nested '" + entry.matched + "' extend tag");
+            layout.splice(index, 1);
+            return layout;
+        } else if (entry.matched.startsWith("@extend{")) {
+            console.log("start of nested '" + entry.matched + "' extend tag");
+            ext_name = entry.value;
+            var nested = splitTemplate(loadTemplate(entry.value));
+            layout.splice.apply(layout, [index, 1].concat(nested));
+            index += nested.length;
+            continue;
         } else {
             console.log("skip item");
         }
         index++;
     }
-    return stack;
+    return layout;
 }
 
 function splitExpandLayout(template) {
@@ -594,6 +618,6 @@ function splitExpandLayout(template) {
     }
 }
 
-console.log(splitExpandLayout(content_html)(context).reduce(function(acc, curr) {
-    return acc.concat(curr.value);
-}, ""));
+// console.log(splitExpandLayout(content_html)(context).reduce(function(acc, curr) {
+//     return acc.concat(curr.value);
+// }, ""));

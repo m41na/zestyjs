@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Listing Page</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+<body>
+    <div id="app">
+        @slot{title}placeholder@slot{}
+        <hr/>
+        @slot{main}
+        <h3>Sports List</h3>
+        @slot{}
+    </div>
+
+    <template id="main">
+        @extend{dom:#app}      
+        @block{title}Templr@block{}
+        @block{main}
+        <div id="content">
+            @slot{listing}placeholder@slot{}
+        </div>
+        <hr/>
+        @incl{tpl:#widget}
+        @block{} @extend{}
+    </template>
+
+    <template id="listing">
+        @extend{tpl:#main}      
+        @block{listing}
+        <ul id="listing-div">
+            @for{sport, index in sports} @if{(index % 3 ) > 0}
+            <li style="background-color:orange;">
+                <span>@eval{index + 1}</span> - @{sport.name}</li>
+            @else{}
+            <li style="background-color:indigo;">
+                <span>@eval{index + 1}</span> - @{sport.name}</li>
+            @end{} @end{}
+        </ul>
+        @block{} @extend{}
+    </template>
+
+    <template id="widget">
+        <div class="widget">
+            <ul id="listing">
+                @for{sport, index in sports}
+                <li>
+                    <span>@eval{index + 1}</span> - @{sport.name}</li>
+                @end{}
+            </ul>
+
+            <div>
+                @if{sports[0].rank == 2}
+                <p style="background-color:green;">@{sports[0].name}</p>
+                @else{}
+                <p style="background-color:red;">@{sports[0].name}</p>
+                @end{}
+            </div>
+
+            <ul id="listing-1">
+                @for{sport, index in sports} @if{(index % 2 ) > 0}
+                <li style="background-color:yellow;">
+                    <span>@eval{index + 1}</span> - @{sport.name}</li>
+                @else{}
+                <li style="background-color:blue;">
+                    <span>@eval{index + 1}</span> - @{sport.name}</li>
+                @end{} @end{}
+            </ul>
+        </div>
+    </template>
+
+    <script src="he.js"></script>
+    <script src="templr.js"></script>
+    <script>
+        var model = {
+            sports: [{
+                rank: 1,
+                name: 'rugby'
+            }, {
+                rank: 2,
+                name: 'field'
+            }, {
+                rank: 3,
+                name: 'soccer'
+            }, {
+                rank: 4,
+                name: 'biking'
+            }]
+        };
+        ;
+        (function(dom, template, model) {
+                        var markup = document.querySelector(template);
+            var expanded = splitExpandLayout(he.decode(markup.innerHTML))(model).reduce(function(acc, curr) {
+                return acc.concat(curr.value || "");
+            }, "");
+            console.log(expanded);
+
+            //render content
+            var range = document.createRange();
+            var target = document.querySelector(dom);
+            //make 'target' the context node
+            range.selectNode(target);
+            //create node from text
+            var frag = range.createContextualFragment(expanded);
+            //replace target
+            target.parentNode.replaceChild(frag, target);
+        })("#app", "#listing", model);
+    </script>
+</body>
+
+</html>
