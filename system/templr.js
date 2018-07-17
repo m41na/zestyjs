@@ -1,28 +1,13 @@
-var context = {
-    name: "James",
-    profile: {
-        doe: '2010/02/01',
-        age: 30,
-        'reg-addr': [{
-                type: 'home',
-                street: 'king street'
-            },
-            {
-                type: 'work',
-                street: 'deval pass'
-            }
-        ]
-    },
-    skills: ['C++', 'Java', 'Ruby', 'C', 'Python'],
-    sports: [
-        { rank: 1, name: 'rugby' },
-        { rank: 2, name: 'field' },
-        { rank: 3, name: 'hockey' }
-    ]
-};
+var fs;
+try{
+    fs = require('fs');
+}catch(error){
+    console.log('trouble with require - ' + error);
+}
 
-function objProp(path, obj) {
-    //console.log('path -> ' + path + ', obj -> ' + obj);
+var Tmpl = {};
+
+Tmpl.objProp = function(path, obj) {
     return path.split(/\.|\[['"]?(.+?)["']?\]/).filter(function(val) {
         return val;
     }).reduce(function(prev, curr) {
@@ -30,7 +15,7 @@ function objProp(path, obj) {
     }, obj);
 }
 
-function setProp(expr) {
+Tmpl.setProp = function (expr) {
     return function(ctx) {
         var parts = expr.split("=");
         var prop = parts[0].trim();
@@ -39,76 +24,62 @@ function setProp(expr) {
     }
 }
 
-//console.log(objProp('age', { age: 30 }));
-//console.log(objProp('profile[\'reg-addr\'][0].type', context));
-
-function resProp(expr) {
+Tmpl.resProp = function (expr) {
     return function(ctx) {
-        return objProp(expr, ctx);
-    };
+        return this.objProp(expr, ctx);
+    }.bind(this);
 }
 
-//console.log(resProp('profile[age]')(context));
-//console.log(resProp('profile[\'reg-addr\'][0].type')(context));
-//console.log(resProp('profile[reg-addr][1].type')(context));
-
-function resExpr(expr) {
+Tmpl.resExpr = function (expr) {
     return function(ctx) {
         //padd with a space at the end for regex to match
         var exec = expr.concat(' ').replace(/(\w+(\.|\[).*?)\s/g, function(m, p) {
-            return objProp(p, ctx);
-        });
+            return this.objProp(p, ctx);
+        }.bind(this));
         if (exec.search(/([a-zA-Z_]+?)\s/g) > -1) {
             exec = expr.concat(' ').replace(/([a-zA-Z_]+?)\s/g, function(m, p) {
-                return objProp(p, ctx);
-            });
+                var e = this.objProp(p, ctx);
+                return this.isString(e)? "'" + e + "'" : e;
+            }.bind(this));
         }
         console.log('executable expression -> ' + exec);
         return eval(exec);
-    };
+    }.bind(this);
 }
 
-//console.log(resExpr('ctx.age > 30')({ ctx: { name: 'mike', age: 20 } }));
-//console.log(resExpr("ctx['age'] > 30 && ctx.age > 35")({ ctx: { name: 'mike', age: 40 } }));
-//console.log(resExpr("age > 30")({ name: 'mike', age: 40 }));
+Tmpl.isNumber = function(value) {
+    return typeof value === 'number' && isFinite(value);
+}
 
-var cozy = [
-    "<div class='person'>",
-    "<p data-doe='@{profile.doe}'>@{name}</p>",
-    "@if{profile.age < 20}",
-    "<div style='background-color=red'>@{profile['reg-addr'][0].type}</div>",
-    "@else{}",
-    "<div style='background-color=green'>@{profile['reg-addr'][1].type}</div>",
-    "@end{}",
-    "<ul class='skills'>",
-    "@for{skill in skills}",
-    "<li>@{skill}</li>",
-    "@end{}",
-    "</ul>",
-    "<hr/>",
-    "@incl{dozy}",
-    "</div>"
-].join("");
+Tmpl.isString = function  (value) {
+    return typeof value === 'string' || value instanceof String;
+}
 
-var dozy = [
-    "<ul class='sports'>",
-    "@for{sport in sports}",
-    "@if{sport.rank == 1}",
-    "<li data-rank='@eval{sport.rank * 20}'>@{sport.name}</li>",
-    "@else{sport.rank == 2}",
-    "<li data-rank='@eval{sport.rank * 15}'>@{sport.name}</li>",
-    "@else{sport.rank == 3}",
-    "<li data-rank='@eval{sport.rank * 10}'>@{sport.name}</li>",
-    "@else{}",
-    "<li data-rank='none'>@{sport.name}</li>",
-    "@end{}",
-    "@end{}",
-    "</ul>"
-].join("");
+Tmpl.isObject = function  (value) {
+    return value && typeof value === 'object' && value.constructor === Object;
+}
 
-var eazy = "<div id='parent'>@slot{}child content@slot{/}</div>";
+Tmpl.isArray = function  (value) {
+    return value && Array.isArray(value);
+}
 
-function loadTemplate(name) {
+Tmpl.isFunction = function  (value) {
+    return typeof value === 'function';
+}
+
+Tmpl.isRegExp = function  (value) {
+    return value && typeof value === 'object' && value.constructor === RegExp;
+}
+
+Tmpl.isError = function  (value) {
+    return value instanceof Error && typeof value.message !== 'undefined';
+}
+
+Tmpl.isDate = function  (value) {
+    return value instanceof Date;
+}
+
+Tmpl.loadTemplate = function (name) {
     var index;
     if((index = name.search(/^dom:/)) > -1){
         return he.decode(document.querySelector(name.substring('dom:'.length)).innerHTML);
@@ -117,14 +88,20 @@ function loadTemplate(name) {
         return he.decode(document.querySelector(name.substring('tpl:'.length)).innerHTML);
     }
     else if((index = name.search(/^fs:/)) > -1){
-        throw Error('loading from file system not yet implemented');
+       return this.loadFsTemplate(name.substring('fs:'.length));
     }
     else{
         return eval(name);
     }
 }
 
-function splitTemplate(template) {
+Tmpl.loadFsTemplate = function (name) {
+    var data = fs.readFileSync(name, "utf-8");
+    var templ = /<template.*?>([^].*?)<\/template>/.exec(data);
+    return templ[1];
+}
+
+Tmpl.splitTemplate = function (template) {
     var regex = /(@\{(.+?)\})|(@if\{(.+?)\})|(@else\{(.*?)\})|(@end\{\})|(@for\{(.+?)\})|(@eval\{(.+?)\})|(@set\{(\w+?=.+?)\})|(@incl\{(.+?)\})|(@extend\{(.*?)\})|(@block\{(.*?)\})|(@super\{(\s*?)\})|(@slot\{(.*?)\})/g;
     var match;
     var start = 0;
@@ -212,31 +189,31 @@ function splitTemplate(template) {
     return stack;
 }
 
-function expandTemplate(start, stack, context) {
+Tmpl.expandTemplate = function (start, stack, context) {
     var index = start;
     while (index < stack.length) {
         var entry = stack[index];
         if (entry.matched.startsWith("@if{")) {
-            var if_res = expandIf(index, stack, context);
+            var if_res = this.expandIf(index, stack, context);
             index = if_res.index;
         } else if (entry.matched.startsWith("@for{")) {
-            var for_res = expandFor(index, stack, context);
+            var for_res = this.expandFor(index, stack, context);
             index = for_res.index;
         } else if (entry.matched == "@end{}") {
             console.log("handle @end{} logic");
         } else if (entry.matched.startsWith("@incl{")) {
-            var incl_res = expandIncl(index, stack, context);
+            var incl_res = this.expandIncl(index, stack, context);
             index = incl_res.index;
         } else if (entry.matched.startsWith("@extend{")) {
-            var ext_res = expandExtend(index, stack, context);
+            var ext_res = this.expandExtend(index, stack, context);
             index = ext_res.index;
         } else {
             if (entry.matched.startsWith("@{")) {
-                entry.value = resProp(entry.value)(context);
+                entry.value = this.resProp(entry.value)(context);
             } else if (entry.matched.startsWith("@eval{")) {
-                entry.value = resExpr(entry.value)(context);
+                entry.value = this.resExpr(entry.value)(context);
             } else if (entry.matched.startsWith("@set{")) {
-                entry.value = setProp(entry.value)(context);
+                entry.value = this.setProp(entry.value)(context);
             } else {
                 console.log("must be text only -> " + entry.value);
             }
@@ -246,34 +223,34 @@ function expandTemplate(start, stack, context) {
     return stack;
 }
 
-function splitExpand(template) {
+Tmpl.splitExpand = function (template) {
     return function(context) {
-        return expandTemplate(0, splitTemplate(template), context);
-    }
+        return this.expandTemplate(0, this.splitTemplate(template), context);
+    }.bind(this);
 }
 
-function expandIf(start, stack, context) {
+Tmpl.expandIf = function (start, stack, context) {
     var index = start;
     //splice @if{} from stack
     var if_tag = stack.splice(index, 1)[0];
-    var found = resExpr(if_tag.value)(context);
+    var found = this.resExpr(if_tag.value)(context);
     //process stack
     var entry = stack[index];
     while (entry.matched != "@end{}") {
         if (entry.matched.startsWith("@if{")) {
-            entry.value = resExpr(entry.value)(context);
+            entry.value = this.resExpr(entry.value)(context);
             found = entry.value;
             stack.splice(index, 1);
             entry = stack[index];
             continue;
         } else if (entry.matched == "@else{}") {
-            var else_res = expandElse(index, stack, context, !found);
+            var else_res = this.expandElse(index, stack, context, !found);
             index = else_res.index;
             found = else_res.found;
             entry = stack[index];
             continue;
         } else if (entry.matched.startsWith("@else{")) {
-            var elif_res = expandElIf(index, stack, context);
+            var elif_res = this.expandElIf(index, stack, context);
             index = elif_res.index;
             entry = stack[index];
             continue;
@@ -283,11 +260,11 @@ function expandIf(start, stack, context) {
                 entry = stack[index];
                 continue;
             } else if (entry.matched.startsWith("@{")) {
-                entry.value = resProp(entry.value)(context);
+                entry.value = this.resProp(entry.value)(context);
             } else if (entry.matched.startsWith("@eval{")) {
-                entry.value = resExpr(entry.value)(context);
+                entry.value = this.resExpr(entry.value)(context);
             } else if (entry.matched.startsWith("@set{")) {
-                entry.value = setProp(entry.value)(context);
+                entry.value = this.setProp(entry.value)(context);
             }
         }
         entry = stack[++index];
@@ -296,16 +273,16 @@ function expandIf(start, stack, context) {
     return { index: index, found: found };
 }
 
-function expandElIf(start, stack, context) {
+Tmpl.expandElIf = function (start, stack, context) {
     var index = start;
     //splice @elif{} from stack
     var elif_tag = stack.splice(index, 1)[0];
-    var found = resExpr(elif_tag.value)(context);
+    var found = this.resExpr(elif_tag.value)(context);
     //process stack
     var entry = stack[index];
     while (entry.matched != "@end{}") {
         if (entry.matched.startsWith("@if{")) {
-            var if_res = expandIf(index, stack, context);
+            var if_res = this.expandIf(index, stack, context);
             index = if_res.index;
             found = if_res.found;
             continue;
@@ -319,11 +296,11 @@ function expandElIf(start, stack, context) {
                 entry = stack[index];
                 continue;
             } else if (entry.matched.startsWith("@{")) {
-                entry.value = resProp(entry.value)(context);
+                entry.value = this.resProp(entry.value)(context);
             } else if (entry.matched.startsWith("@eval{")) {
-                entry.value = resExpr(entry.value)(context);
+                entry.value = this.resExpr(entry.value)(context);
             } else if (entry.matched.startsWith("@set{")) {
-                entry.value = setProp(entry.value)(context);
+                entry.value = this.setProp(entry.value)(context);
             }
         }
         entry = stack[++index];
@@ -331,7 +308,7 @@ function expandElIf(start, stack, context) {
     return { index: index, found: found };
 }
 
-function expandElse(start, stack, context, keep) {
+Tmpl.expandElse = function (start, stack, context, keep) {
     var index = start;
     var found = keep;
     //splice @else{} from stack
@@ -340,7 +317,7 @@ function expandElse(start, stack, context, keep) {
     var entry = stack[index];
     while (entry.matched != "@end{}") {
         if (entry.matched.startsWith("@if{")) {
-            var if_res = expandIf(index, stack, context);
+            var if_res = this.expandIf(index, stack, context);
             index = if_res.index;
             found = if_res.found;
             continue;
@@ -358,11 +335,11 @@ function expandElse(start, stack, context, keep) {
                 entry = stack[index];
                 continue;
             } else if (entry.matched.startsWith("@{")) {
-                entry.value = resProp(entry.value)(context);
+                entry.value = this.resProp(entry.value)(context);
             } else if (entry.matched.startsWith("@eval{")) {
-                entry.value = resExpr(entry.value)(context);
+                entry.value = this.resExpr(entry.value)(context);
             } else if (entry.matched.startsWith("@set{")) {
-                entry.value = setProp(entry.value)(context);
+                entry.value = this.setProp(entry.value)(context);
             }
         }
         entry = stack[++index];
@@ -370,7 +347,7 @@ function expandElse(start, stack, context, keep) {
     return { index: index, found: found };
 }
 
-function forParams(expr) {
+Tmpl.forParams = function (expr) {
     var regex_2 = /(\w+?)\s*?in\s*?(\w+?)$/g;
     var regex_3 = /(\w+?)\s*?,?\s*?(\w+?)\s*?in\s*?(\w+?)$/g;
     var match;
@@ -389,10 +366,7 @@ function forParams(expr) {
     }
 }
 
-//console.log(forParams("abs, xyc in letters"));
-//console.log(forParams("abc in letters"));
-
-function resFor(elements, cursor, key) {
+Tmpl.resFor = function (elements, cursor, key) {
     return function(stack) {
         var result = [];
         for (var index in elements) {
@@ -401,18 +375,18 @@ function resFor(elements, cursor, key) {
             var ctx = {};
             ctx[cursor] = elements[index];
             if (key) ctx[key] = index;
-            result = result.concat(expandTemplate(0, local_copy, ctx));
+            result = result.concat(this.expandTemplate(0, local_copy, ctx));
         }
         return result;
-    };
+    }.bind(this);
 }
 
-function expandFor(start, stack, context) {
+Tmpl.expandFor = function (start, stack, context) {
     var index = start;
     var local = [];
     //splice @for tag to extract [elements, stack, cursor, key]
     var for_tag = stack.splice(index, 1)[0];
-    var params = forParams(for_tag.value);
+    var params = this.forParams(for_tag.value);
     //process stack
     var entry = stack[index];
     var depth = 0;
@@ -429,97 +403,22 @@ function expandFor(start, stack, context) {
     //drop @end tag which belongs to @for
     stack.splice(index, 1);
     //expand
-    var for_res = resFor(context[params.elements], params.cursor, params.key)(local);
+    var for_res = this.resFor(context[params.elements], params.cursor, params.key)(local);
     //insert array into stack array
     stack.splice.apply(stack, [index, 0].concat(for_res));
     return { index: (index + for_res.length) };
 }
 
-var model = { xyz: 10, list: [10, 20, 25, 40], x: 25, profile: { name: 'mike', age: 30 } };
-
-var simple0 = "do eval @eval{(xyz / 2) > 10} retrieve value @{profile.name}";
-var simple1 = "do eval @eval{(xyz * 2) > 10} start if @if{list[2] >= 30} if matched @else{} else matched @end{} retrieve value @{profile.name}";
-var simple2 = "do eval @eval{(xyz * 2) > 10} start if @if{list[2] >= 30} if matched @else{list[2] < 30} elif matched @end{} retrieve value @{profile.name}";
-var simple3 = "do eval @eval{(xyz ^ 2) > 10} start if @if{list[2] == 25} if matched @else{list[2] == 40} elif matched @else{} else matched @end{} retrieve value @{profile.name}";
-var simple4 = "do eval @eval{(xyz - 2) > 10} start if @if{list[2] >= 30} if matched @else{list[2] == 40} elif matched @else{} else matched @end{} retrieve value @{profile.name}";
-var simple5 = "do eval @eval{(xyz + 2) > 10} start for @for{a in list} <p>@{a}</p> @end{} end for @end{} retrieve value @{profile.name}";
-var simple6 = "do eval @eval{(xyz - 2) > 10} start for @for{elem, index in list} <p data-index='@{index}'>@{elem}</p> start if @if{elem > 30} if matched @else{elem < 30} elif matched @else{} else matched @end{} end for @end{} retrieve value @{profile.name}";
-
-function expandIncl(start, stack, context) {
+Tmpl.expandIncl = function (start, stack, context) {
     var index = start;
     //splice @if{} from stack
     var incl_tag = stack.splice(index, 1)[0];
-    var incl = splitExpand(loadTemplate(incl_tag.value))(context);
+    var incl = this.splitExpand(this.loadTemplate(incl_tag.value))(context);
     stack.splice.apply(stack, [index, 0].concat(incl));
     return { index: (index + incl.length) };
 }
 
-// console.log(splitExpand(eazy)(context).reduce(function(acc, curr) {
-//     return acc.concat(curr.value);
-// }, ""));
-
-var content_html = [
-    "@extend{layout_html}",
-
-    "@block{ title } Content Layout @block{}",
-
-    "@block{ main }",
-    "<div id=\"content\">",
-    "@super{}",
-    "<ul id=\"listing\">",
-    "@for{sport, index in sports}",
-    "<li><span>@eval{index + 1}</span> - @{sport.name}</li>",
-    "@end{}",
-    "</ul>",
-    "</div > ",
-    "@block{}",
-
-    "@extend{}"
-].join("");
-
-var simple_html = [
-    "@extend{layout_html}",
-
-    "@block{ title } Simple Layout @block{}",
-
-    "@block{ main }",
-    "<div id=\"content\">",
-    "@super{}",
-    "<p>It's your birthday!!</p>",
-    "</div > ",
-    "@block{}",
-
-    "@extend{}"
-].join("");
-
-var layout_html = [
-    "<div id=\"layout\">",
-
-    "<div id=\"title\">@slot{title}Placeholder Title@slot{}</div>",
-
-    "<div id=\"app\">",
-    "@slot{ main }",
-    "<h3>Messages</h3>",
-    "@slot{}",
-    "</div >",
-
-    "</div>"
-].join("");
-
-//Now dealing with layouts
-// console.log(splitTemplate(simple_html).reduce(function(acc, curr) {
-//     return acc.concat(curr.value);
-// }, ""));
-
-// console.log(splitTemplate(layout_html).reduce(function(acc, curr) {
-//     return acc.concat(curr.value);
-// }, ""));
-
-// console.log(expandExtend(splitTemplate(simple_html)).reduce(function(acc, curr) {
-//     return acc.concat(curr.value);
-// }, ""));
-
-function expandExtend(stack) {
+Tmpl.expandExtend = function (stack) {
     var index = 0;
     //store @extend tag
     var ext_tag = stack.splice(index, 1)[0];
@@ -569,7 +468,7 @@ function expandExtend(stack) {
     index = 0;
     var ext_name;
     var slot, slot_index;
-    var layout = splitTemplate(loadTemplate(ext_tag.value));
+    var layout = this.splitTemplate(this.loadTemplate(ext_tag.value));
     while (index < layout.length) {
         var entry = layout[index];
         if (entry.matched == "@slot{}") {
@@ -600,7 +499,7 @@ function expandExtend(stack) {
         } else if (entry.matched.startsWith("@extend{")) {
             console.log("start of nested '" + entry.matched + "' extend tag");
             ext_name = entry.value;
-            var nested = splitTemplate(loadTemplate(entry.value));
+            var nested = this.splitTemplate(this.loadTemplate(entry.value));
             layout.splice.apply(layout, [index, 1].concat(nested));
             index += nested.length;
             continue;
@@ -612,12 +511,14 @@ function expandExtend(stack) {
     return layout;
 }
 
-function splitExpandLayout(template) {
+Tmpl.splitExpandLayout = function (template) {
     return function(context) {
-        return expandTemplate(0, expandExtend(splitTemplate(template)), context);
-    }
+        return this.expandTemplate(0, this.expandExtend(this.splitTemplate(template)), context);
+    }.bind(this);
 }
 
-// console.log(splitExpandLayout(content_html)(context).reduce(function(acc, curr) {
-//     return acc.concat(curr.value);
-// }, ""));
+try{
+    module.exports = Tmpl;
+}catch(error){
+    console.log(error);
+}

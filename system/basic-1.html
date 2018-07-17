@@ -92,8 +92,8 @@
         };
         ;
         (function(dom, template, model) {
-                        var markup = document.querySelector(template);
-            var expanded = splitExpandLayout(he.decode(markup.innerHTML))(model).reduce(function(acc, curr) {
+            var markup = document.querySelector(template);
+            var expanded = Tmpl.splitExpandLayout(he.decode(markup.innerHTML))(model).reduce(function(acc, curr) {
                 return acc.concat(curr.value || "");
             }, "");
             console.log(expanded);

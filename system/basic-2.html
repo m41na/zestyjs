@@ -8,61 +8,9 @@
 </head>
 
 <body>
-    <div id="app">
-        <ul id="listing-div">
-            @for{sport, index in sports} @if{(index % 3 ) > 0}
-            <li style="background-color:orange;">
-                <span>@eval{index + 1}</span> - @{sport.name}</li>
-            @else{}
-            <li style="background-color:indigo;">
-                <span>@eval{index + 1}</span> - @{sport.name}</li>
-            @end{} @end{}
-        </ul>
-    </div>
+    <div id="app"></div>
 
-    <script src="he.js"></script>
-    <script src="templr.js"></script>
-    <script>
-        var model = {
-            sports: [{
-                rank: 1,
-                name: 'rugby'
-            }, {
-                rank: 2,
-                name: 'field'
-            }, {
-                rank: 3,
-                name: 'soccer'
-            }, {
-                rank: 4,
-                name: 'biking'
-            }]
-        };
-
-        var Tmpl = function(){};            
-        Tmpl.prototype.render = function(dom, template, model){
-            var markup = document.querySelector(template);
-            var expanded = splitExpand(he.decode(markup.innerHTML))(model).reduce(function(acc, curr) {
-                return acc.concat(curr.value || "");
-            }, "");
-            console.log(expanded);
-
-            //render content
-            var range = document.createRange();
-            var target = document.querySelector(dom);
-            //make 'target' the context node
-            range.selectNode(target);
-            //create node from text
-            var frag = range.createContextualFragment(expanded);
-            //replace target
-            target.parentNode.replaceChild(frag, target);
-        }
-        Tmpl.prototype.loadTemplate = function(name){
-            
-        }
-
-        new Tmpl().render("#app", "#blog-post", model);        
-    </script>
+    <script src="basic-2.js"></script>
 </body>
 
 </html>
