@@ -62,7 +62,7 @@
                 }]
             };
             var target = document.querySelector(selector);
-            var expanded = splitExpand(he.decode(target.outerHTML))(model).reduce(function(acc, curr) {
+            var expanded = Tmpl.splitExpand(he.decode(target.outerHTML))(model).reduce(function(acc, curr) {
                 return acc.concat(curr.value || "");
             }, "");
             console.log(expanded);

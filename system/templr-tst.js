@@ -1,3 +1,5 @@
+var Tmpl = require('./templr.js');
+
 var context = {
     name: "James",
     profile: {
@@ -21,16 +23,16 @@ var context = {
     ]
 };
 
-console.log(objProp('age', { age: 30 }));
-console.log(objProp('profile[\'reg-addr\'][0].type', context));
+console.log(Tmpl.objProp('age', { age: 30 }));
+console.log(Tmpl.objProp('profile[\'reg-addr\'][0].type', context));
 
-console.log(resProp('profile[age]')(context));
-console.log(resProp('profile[\'reg-addr\'][0].type')(context));
-console.log(resProp('profile[reg-addr][1].type')(context));
+console.log(Tmpl.resProp('profile[age]')(context));
+console.log(Tmpl.resProp('profile[\'reg-addr\'][0].type')(context));
+console.log(Tmpl.resProp('profile[reg-addr][1].type')(context));
 
-console.log(resExpr('ctx.age > 30')({ ctx: { name: 'mike', age: 20 } }));
-console.log(resExpr("ctx['age'] > 30 && ctx.age > 35")({ ctx: { name: 'mike', age: 40 } }));
-console.log(resExpr("age > 30")({ name: 'mike', age: 40 }));var cozy = [
+console.log(Tmpl.resExpr('ctx.age > 30')({ ctx: { name: 'mike', age: 20 } }));
+console.log(Tmpl.resExpr("ctx['age'] > 30 && ctx.age > 35")({ ctx: { name: 'mike', age: 40 } }));
+console.log(Tmpl.resExpr("age > 30")({ name: 'mike', age: 40 }));var cozy = [
     "<div class='person'>",
     "<p data-doe='@{profile.doe}'>@{name}</p>",
     "@if{profile.age < 20}",
@@ -64,10 +66,10 @@ var dozy = [
     "</ul>"
 ].join("");
 
-var eazy = "<div id='parent'>@slot{}child content@slot{/}</div>";
+var eazy = "<div id='parent'>@slot{main}child content@slot{}</div>";
 
-console.log(forParams("abs, xyc in letters"));
-console.log(forParams("abc in letters"));
+console.log(Tmpl.forParams("abs, xyc in letters"));
+console.log(Tmpl.forParams("abc in letters"));
 
 var model = { xyz: 10, list: [10, 20, 25, 40], x: 25, profile: { name: 'mike', age: 30 } };
 
@@ -78,10 +80,6 @@ var simple3 = "do eval @eval{(xyz ^ 2) > 10} start if @if{list[2] == 25} if matc
 var simple4 = "do eval @eval{(xyz - 2) > 10} start if @if{list[2] >= 30} if matched @else{list[2] == 40} elif matched @else{} else matched @end{} retrieve value @{profile.name}";
 var simple5 = "do eval @eval{(xyz + 2) > 10} start for @for{a in list} <p>@{a}</p> @end{} end for @end{} retrieve value @{profile.name}";
 var simple6 = "do eval @eval{(xyz - 2) > 10} start for @for{elem, index in list} <p data-index='@{index}'>@{elem}</p> start if @if{elem > 30} if matched @else{elem < 30} elif matched @else{} else matched @end{} end for @end{} retrieve value @{profile.name}";
-
-console.log(splitExpand(eazy)(context).reduce(function(acc, curr) {
-    return acc.concat(curr.value);
-}, ""));
 
 var content_html = [
     "@extend{layout_html}",
@@ -131,18 +129,14 @@ var layout_html = [
     "</div>"
 ].join("");
 
-console.log(splitTemplate(simple_html).reduce(function(acc, curr) {
-    return acc.concat(curr.value);
-}, ""));
+// console.log(Tmpl.splitTemplate(simple_html).reduce(function(acc, curr) {
+//     return acc.concat("\n" + curr.value || curr.matched || "");
+// }, ""));
 
-console.log(splitTemplate(layout_html).reduce(function(acc, curr) {
-    return acc.concat(curr.value);
-}, ""));
+// console.log(Tmpl.splitTemplate(layout_html).reduce(function(acc, curr) {
+//     return acc.concat(curr.value);
+// }, ""));
 
-console.log(expandExtend(splitTemplate(simple_html)).reduce(function(acc, curr) {
-    return acc.concat(curr.value);
-}, ""));
-
-console.log(splitExpandLayout(content_html)(context).reduce(function(acc, curr) {
-    return acc.concat(curr.value);
+console.log(Tmpl.expandExtend(Tmpl.splitTemplate(simple_html)).reduce(function(acc, curr) {
+    return acc.concat(curr.value + "\n");
 }, ""));

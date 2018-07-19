@@ -1,106 +1,4 @@
-var source = `
-<div id="content">
-    @for{post, id in posts}
-    <div class="post" data-v-for="post, id in posts">
-        <h1 data-v-title data-on-click="edit(@{id})">@{post.title}</h1>
-        <h3>By <span data-author>@{post.author}</span></h3>
-        <p data-body>@{post.body}</p>
-    </div>
-    @end{}
-    <form>
-        <input data-title.bind/><br/> 
-        <input data-prop.="author"/><br/>
-        <textarea data-prop="title"></textarea>
-        <br/>
-        <input type="button" data-on-click="send"/><br/>
-    </form>
-</div>
-`;
-
 var Tmpl = require('./templr.js');
-
-function TmplNode(){
-    this.match;
-    this.value;
-    this.parent;
-    this.next;
-    this.prev;
-    this.child;
-}
-
-TmplNode.prototype.chidlren = function(){
-    var top = child;
-    return {
-        add(obj){
-            obj.prev = top;
-            obj.parent = this;
-            this.child.next = obj;
-            top = obj;
-            return top;
-        },
-        get(){
-            var children = [];
-            var next;
-            while((next = child.next) != null){
-                children.push(next);
-            }
-            return children;
-        },
-        pop(){
-            top--;
-            return this.children.pop;
-        },
-        head(){
-            return this.children[top];
-        },
-        size(){
-            return this.children.length;
-        },
-        back(){
-            if(top - 1 > 0){
-                return arr[--top];
-            }
-        }
-    }
-}
-
-var regex = /(@for\{(.+?)\})|(@end\{\})|(@\{(.+?)\})/g;
-var match;
-var wip = tokens();
-var start = 0;
-var text;
-while((match = regex.exec(source)) != null){
-    var matched = match[0];
-    
-    text = source.substring(start, match.index);
-    if (text.trim().length > 0) {
-        wip.add({match: "", value: text});
-        console.log(text);
-    }
-
-    if(matched.startsWith("@for{")){
-        wip.add({match: matched, value: match[2]});
-        console.log(matched);
-    }
-    else if(matched.startsWith("@{")){
-        wip.add({match: matched, value: match[6]});
-        console.log(matched);
-    }
-    else if(matched == "@end{}"){
-        wip.add({match: matched, value: match[4]});
-        console.log(matched);
-    }
-    else{
-        console.log("unsupported match encoutered - " + matched);
-    }
-    start = regex.lastIndex;
-}
-
-text = source.substring(start);
-if (text.trim().length > 0) {
-    wip.add({ match: "", value: text });
-    console.log(text);
-}
 
 var ctx = {x: 5};
 var ex1 = 'x < 5';
@@ -192,3 +90,71 @@ var options = dofor("num", "i", "num")(Object.keys(numbers)).map(e=>{
 options.forEach(e=>{
     doif(["e == 'one'"])(e);
 });
+
+var markup = [
+    "<ul class='skills'>",
+    "@for{skill in skills}",
+    "<li>@{skill}</li>",
+    "@end{}",
+    "</ul>"];
+
+var splits = [
+    {matched: "", value: "<ul class='skills'>"},
+    {matched: "@for{skill in skills}", value: "skill in skills"},
+    {matched: "", value: "<li>"},
+    {matched: "@{skill}", value: "skill"},
+    {matched: "", value: "</li>"},
+    {matched: "@end{}", value: ""},
+    {matched: "", value: "</ul>"}
+];
+
+var values = {skills: ['C++', 'Java', 'Ruby', 'C', 'Python']};
+
+function doFor(start, stack){
+    var index = start;
+    while(index < stack.length){
+        var item = stack[index];
+        if(item.matched == ""){
+            var val = item.value;
+            item.value = function(){
+                return val;
+            }
+        }
+        else if(item.matched.startsWith("@for{")){
+            var last = index + 1;
+            var item = stack[last];
+            while(item.matched != "@end{}"){
+                item = stack[++last];
+            }
+            
+            console.log(`@for elements are between ${index} and ${last}`);
+            var for_params = Tmpl.forParams(stack[index].value);
+            var replacement = {
+                matched: "",
+                value: new function(){
+                    return function(context){
+                        var cur = for_params.cursor;
+                        return context[for_params.elements].map((el, i)=>{
+                            var ctx = {};
+                            ctx[cur] = el;
+                            if(for_params.key) context[key] = i;
+                            var stack_copy = spliced.slice(1, spliced.length).map(e=>{return {matched: e.matched, value: e.value};});
+                            var for_target = Tmpl.expandTemplate(0, stack_copy);
+                            var expanded = for_target(ctx);
+                            return expanded;
+                        });
+                    }
+                }
+            }
+            //replace stack items
+            var spliced = stack.splice(index, last, replacement);
+            last = index;
+        }
+        index++;
+    }
+    return stack;
+}
+
+console.log(doFor(0, splits).reduce(function(acc, curr) {
+    return acc.concat(curr.value(values));
+}, ""));
