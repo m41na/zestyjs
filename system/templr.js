@@ -1,3 +1,19 @@
+var simple_html = [
+    "@extend{layout_html}",
+
+    "@block{ title } Simple Layout @block{}",
+    
+    "@block{ main }",
+    "<div id=\"content\">",
+    "@super{}",
+    "<p>It's your birthday!!</p>",
+    "@slot{wrapped}<p>Sports List</p>@slot{}",
+    "</div > ",
+    "@block{}",
+
+    "@extend{}"
+].join("");
+
 var layout_html = [
     "<div id=\"layout\">",
 
@@ -107,6 +123,114 @@ Tmpl.mergeArrays = function(a, b){
         b.unshift.apply( b, a );
         return b;
     }
+}
+
+Tmpl.newComponent = function(name, parent){
+    return {
+        name: name,
+        parent: parent,
+        stack: [],
+        children: []
+    }
+}
+
+Tmpl.buildComponent = function (template, name, parent) {
+    var regex = /(@\{(.+?)\})|(@if\{(.+?)\})|(@else\{(.*?)\})|(@end\{\})|(@for\{(.+?)\})|(@eval\{(.+?)\})|(@set\{(\w+?=.+?)\})|(@incl\{(.+?)\})|(@extend\{(.*?)\})|(@block\{(.*?)\})|(@super\{(\s*?)\})|(@slot\{(.*?)\})/g;
+    var match;
+    var start = 0;
+    var component = this.newComponent(name, parent);
+    //process
+    while ((match = regex.exec(template)) != null) {
+        // for (var i in match) {
+        //     console.log("match[" + i + "]->" + match[i]);
+        // }
+        var val;
+        var matched = match[0];
+
+        var text = template.substring(start, match.index);
+        if (text.trim().length > 0) {
+            console.log('text before next match -> ' + text);
+            component.stack.push({ matched: "", value: text });
+        }
+
+        if (matched.startsWith("@{")) {
+            //must be an expression
+            val = match[2];
+            console.log('@{} expr matched -> ' + match[1]);
+            component.stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@if{")) {
+            val = match[4];
+            console.log("@if condition matched -> " + match[3]);
+            component.stack.push({ matched: matched, value: val });
+        } else if (matched == "@else{}") {
+            val = "";
+            console.log("last @else{} condition reached -> " + match[5]);
+            component.stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@else{")) {
+            val = match[6];
+            console.log("@else{expr} condition matched -> " + match[5]);
+            component.stack.push({ matched: matched, value: val });
+        } else if (matched == "@end{}") {
+            val = "";
+            console.log('reached @end of block -> ' + match[7]);
+            component.stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@for{")) {
+            val = match[9];
+            console.log("@for condition matched -> " + match[8]);
+            component.stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@eval{")) {
+            val = match[11];
+            console.log('@eval matched -> ' + match[10]);
+            component.stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@set{")) {
+            val = match[13];
+            console.log("@set statement matched -> " + match[12]);
+            component.stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@incl{")) {
+            val = match[15];
+            console.log("@incl statement matched -> " + match[14]);
+            var child = this.buildComponent(this.loadTemplate(val), val, this);
+            component.children.push(child);
+        }  else if (matched == "@extend{}") {
+            val = match[17];
+            console.log('end of @extend{} directive reached -> ' + match[16]);
+            component.stack.push({ matched: matched, value: val });
+            return component;
+        } else if (matched.startsWith("@extend{")) {
+            val = match[17];
+            console.log('beginning of @extend{} directive matched -> ' + match[16]);
+            var child = this.buildComponent(this.loadTemplate(val), val, this);
+            component.children.push(child);
+        }else if (matched.startsWith("@block{")) {
+            val = match[19];
+            console.log("@block directive matched -> " + match[18]);
+            component.stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@super{")) {
+            val = match[21];
+            console.log("@super directive matched -> " + match[20]);
+            component.stack.push({ matched: matched, value: val });
+        } else if (matched == "@slot{}") {
+            val = match[23];
+            console.log("end of @slot directive reached -> " + match[22]);
+            component.stack.push({ matched: matched, value: val });
+        } else if (matched.startsWith("@slot{")) {
+            val = match[23];
+            console.log("beginning of @slot{} directive matched -> " + match[22]);
+            component.stack.push({ matched: matched, value: val });
+        } else {
+            throw Error('unexpected token matched -> ' + matched);
+        }
+        //reset start
+        start = regex.lastIndex;
+    }
+    //get last section
+    text = template ? template.substring(start) : "";
+    if (text.trim().length > 0) {
+        console.log('text before end of template -> ' + text);
+        component.stack.push({ matched: "", value: text });
+    }
+    //return
+    return component;
 }
 
 Tmpl.loadTemplate = function (name) {
@@ -278,8 +402,12 @@ Tmpl.expandExtend = function (stack) {
             bal_check.push(curr_block);
         }
         else if(entry.matched == "@super{}"){
-            slots[curr_block].content.forEach(e=>slots[curr_block].push(e));
-            index++;
+            slots[curr_block].content.forEach(e=>{
+                slots[curr_block].push(e);
+                block_len++;
+                index++;
+            });
+            stack.splice(index, 1);
         }
         else{
             if(curr_block){

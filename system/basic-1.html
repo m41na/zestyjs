@@ -63,9 +63,13 @@
         };
         ;
         (function(dom, template, model) {
-            var markup = document.querySelector(template);
-            var expanded = Tmpl.splitExpand(he.decode(markup.innerHTML));
-            var rendered = expanded(model).reduce(function(acc, curr) {
+            var markup = document.querySelector(template).innerHTML;
+            // var rendered = Tmpl.expandTemplate(0, Tmpl.splitTemplate(he.decode(markup))(model).reduce(function(acc, curr) {
+            //     return acc.concat(curr.value);
+            // }, ""));
+            var splitup = Tmpl.splitTemplate(he.decode(markup));
+            var expanded = Tmpl.expandTemplate(0, splitup)(model);
+            var rendered = expanded.reduce(function(acc, curr) {
                 return acc.concat(curr.value || "");
             }, "");
             console.log(rendered);
@@ -79,7 +83,7 @@
             var frag = range.createContextualFragment(rendered);
             //replace target
             target.parentNode.replaceChild(frag, target);
-        })("#app", "#listing", model);
+        })("#app", "#main", model);
     </script>
 </body>
 

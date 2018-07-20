@@ -81,12 +81,10 @@ var simple4 = "do eval @eval{(xyz - 2) > 10} start if @if{list[2] >= 30} if matc
 var simple5 = "do eval @eval{(xyz + 2) > 10} start for @for{a in list} <p>@{a}</p> @end{} end for @end{} retrieve value @{profile.name}";
 var simple6 = "do eval @eval{(xyz - 2) > 10} start for @for{elem, index in list} <p data-index='@{index}'>@{elem}</p> start if @if{elem > 30} if matched @else{elem < 30} elif matched @else{} else matched @end{} end for @end{} retrieve value @{profile.name}";
 
-var content_html = [
-    "@extend{layout_html}",
+var sports_html = [
+    "@extend{simple_html}",
 
-    "@block{ title } Content Layout @block{}",
-
-    "@block{ main }",
+    "@block{ listing }",
     "<div id=\"content\">",
     "@super{}",
     "<ul id=\"listing\">",
@@ -100,15 +98,26 @@ var content_html = [
     "@extend{}"
 ].join("");
 
+var yellow_html = [
+    "@extend{simple_html}",
+
+    "@block{ wrapped }",
+    "<p>YELLOW HERE!</p > ",
+    "@block{}",
+
+    "@extend{}"
+].join("");
+
 var simple_html = [
     "@extend{layout_html}",
 
     "@block{ title } Simple Layout @block{}",
-
+    
     "@block{ main }",
     "<div id=\"content\">",
     "@super{}",
     "<p>It's your birthday!!</p>",
+    "@slot{wrapped}<p>Sports List</p>@slot{}",
     "</div > ",
     "@block{}",
 
@@ -133,10 +142,13 @@ var layout_html = [
 //     return acc.concat("\n" + curr.value || curr.matched || "");
 // }, ""));
 
-// console.log(Tmpl.splitTemplate(layout_html).reduce(function(acc, curr) {
-//     return acc.concat(curr.value);
+// console.log(Tmpl.expandExtend(Tmpl.splitTemplate(simple_html)).reduce(function(acc, curr) {
+//     return acc.concat(curr.value + "\n");
 // }, ""));
 
-console.log(Tmpl.expandExtend(Tmpl.splitTemplate(simple_html)).reduce(function(acc, curr) {
-    return acc.concat(curr.value + "\n");
-}, ""));
+// console.log(Tmpl.expandTemplate(0, Tmpl.splitTemplate(yellow_html))(context).reduce(function(acc, curr) {
+//     return acc.concat(curr.value + "\n");
+// }, ""));
+
+var component = Tmpl.buildComponent(simple_html, "simple_html");
+console.log(component);
