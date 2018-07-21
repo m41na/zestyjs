@@ -11,3 +11,4 @@ target/
 /data/**
 nbactions.xml
 /nbproject/
+node_modules/

@@ -32,7 +32,9 @@ console.log(Tmpl.resProp('profile[reg-addr][1].type')(context));
 
 console.log(Tmpl.resExpr('ctx.age > 30')({ ctx: { name: 'mike', age: 20 } }));
 console.log(Tmpl.resExpr("ctx['age'] > 30 && ctx.age > 35")({ ctx: { name: 'mike', age: 40 } }));
-console.log(Tmpl.resExpr("age > 30")({ name: 'mike', age: 40 }));var cozy = [
+console.log(Tmpl.resExpr("age > 30")({ name: 'mike', age: 40 }));
+
+var cozy = [
     "<div class='person'>",
     "<p data-doe='@{profile.doe}'>@{name}</p>",
     "@if{profile.age < 20}",
@@ -55,9 +57,9 @@ var dozy = [
     "@for{sport in sports}",
     "@if{sport.rank == 1}",
     "<li data-rank='@eval{sport.rank * 20}'>@{sport.name}</li>",
-    "@else{sport.rank == 2}",
+    "@elif{sport.rank == 2}",
     "<li data-rank='@eval{sport.rank * 15}'>@{sport.name}</li>",
-    "@else{sport.rank == 3}",
+    "@elif{sport.rank == 3}",
     "<li data-rank='@eval{sport.rank * 10}'>@{sport.name}</li>",
     "@else{}",
     "<li data-rank='none'>@{sport.name}</li>",
@@ -75,11 +77,11 @@ var model = { xyz: 10, list: [10, 20, 25, 40], x: 25, profile: { name: 'mike', a
 
 var simple0 = "do eval @eval{(xyz / 2) > 10} retrieve value @{profile.name}";
 var simple1 = "do eval @eval{(xyz * 2) > 10} start if @if{list[2] >= 30} if matched @else{} else matched @end{} retrieve value @{profile.name}";
-var simple2 = "do eval @eval{(xyz * 2) > 10} start if @if{list[2] >= 30} if matched @else{list[2] < 30} elif matched @end{} retrieve value @{profile.name}";
-var simple3 = "do eval @eval{(xyz ^ 2) > 10} start if @if{list[2] == 25} if matched @else{list[2] == 40} elif matched @else{} else matched @end{} retrieve value @{profile.name}";
-var simple4 = "do eval @eval{(xyz - 2) > 10} start if @if{list[2] >= 30} if matched @else{list[2] == 40} elif matched @else{} else matched @end{} retrieve value @{profile.name}";
+var simple2 = "do eval @eval{(xyz * 2) > 10} start if @if{list[2] >= 30} if matched @elif{list[2] < 30} elif matched @end{} retrieve value @{profile.name}";
+var simple3 = "do eval @eval{(xyz ^ 2) > 10} start if @if{list[2] == 25} if matched @elif{list[2] == 40} elif matched @else{} else matched @end{} retrieve value @{profile.name}";
+var simple4 = "do eval @eval{(xyz - 2) > 10} start if @if{list[2] >= 30} if matched @elif{list[2] == 40} elif matched @else{} else matched @end{} retrieve value @{profile.name}";
 var simple5 = "do eval @eval{(xyz + 2) > 10} start for @for{a in list} <p>@{a}</p> @end{} end for @end{} retrieve value @{profile.name}";
-var simple6 = "do eval @eval{(xyz - 2) > 10} start for @for{elem, index in list} <p data-index='@{index}'>@{elem}</p> start if @if{elem > 30} if matched @else{elem < 30} elif matched @else{} else matched @end{} end for @end{} retrieve value @{profile.name}";
+var simple6 = "do eval @eval{(xyz - 2) > 10} start for @for{elem, index in list} <p data-index='@{index}'>@{elem}</p> start if @if{elem > 30} if matched @elif{elem < 30} elif matched @else{} else matched @end{} end for @end{} retrieve value @{profile.name}";
 
 var sports_html = [
     "@extend{simple_html}",
@@ -138,9 +140,12 @@ var layout_html = [
     "</div>"
 ].join("");
 
-// console.log(Tmpl.splitTemplate(simple_html).reduce(function(acc, curr) {
-//     return acc.concat("\n" + curr.value || curr.matched || "");
-// }, ""));
+var line1 = "@for{ab in two} do @end @if{x>2} x>2 @elif{x<2} x<2 @else{} value=@{x} @end{} @end{} @set{b=2} @eval{b==2}";
+var line2 = "@extend{simple_html} @block{line} line @block{} @extend{} @slot{line}YES@slot{}";
+
+console.log(Tmpl.splitTemplate(line1).reduce(function(acc, curr) {
+    return acc.concat("\n" + curr.value || curr.matched || "");
+}, ""));
 
 // console.log(Tmpl.expandExtend(Tmpl.splitTemplate(simple_html)).reduce(function(acc, curr) {
 //     return acc.concat(curr.value + "\n");
@@ -150,5 +155,5 @@ var layout_html = [
 //     return acc.concat(curr.value + "\n");
 // }, ""));
 
-var component = Tmpl.buildComponent(simple_html, "simple_html");
-console.log(component);
+// var component = Tmpl.buildComponent(simple_html, "simple_html");
+// console.log(component);
