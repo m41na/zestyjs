@@ -6,13 +6,13 @@ var context = {
         doe: '2010/02/01',
         age: 30,
         'reg-addr': [{
-                type: 'home',
-                street: 'king street'
-            },
-            {
-                type: 'work',
-                street: 'deval pass'
-            }
+            type: 'home',
+            street: 'king street'
+        },
+        {
+            type: 'work',
+            street: 'deval pass'
+        }
         ]
     },
     skills: ['C++', 'Java', 'Ruby', 'C', 'Python'],
@@ -114,7 +114,7 @@ var simple_html = [
     "@extend{layout_html}",
 
     "@block{ title } Simple Layout @block{}",
-    
+
     "@block{ main }",
     "<div id=\"content\">",
     "@super{}",
@@ -141,10 +141,12 @@ var layout_html = [
 ].join("");
 
 var line1 = "@for{ab in two} do @end @if{x>2} x>2 @elif{x<2} x<2 @else{} value=@{x} @end{} @end{} @set{b=2} @eval{b==2}";
-var line2 = "@extend{simple_html} @block{line} line @block{} @extend{} @slot{line}YES@slot{}";
+var line2 = "<parent>@slot{line} parent content @slot{}</parent>";
+var line3 = "@extend{line2} @block{line}@super{} <br/> show content@block{} @extend{}";
 
-console.log(Tmpl.splitTemplate(line1).reduce(function(acc, curr) {
-    return acc.concat("\n" + curr.value || curr.matched || "");
+var element = Tmpl.buildElements(yellow_html, 'yellow_html');
+console.log(element.render().reduce(function (acc, curr) {
+    return acc.concat(curr.value + "\n");
 }, ""));
 
 // console.log(Tmpl.expandExtend(Tmpl.splitTemplate(simple_html)).reduce(function(acc, curr) {
@@ -155,5 +157,5 @@ console.log(Tmpl.splitTemplate(line1).reduce(function(acc, curr) {
 //     return acc.concat(curr.value + "\n");
 // }, ""));
 
-// var component = Tmpl.buildComponent(simple_html, "simple_html");
-// console.log(component);
+// var element = Tmpl.buildElements(simple_html, "simple_html");
+// console.log(element);
