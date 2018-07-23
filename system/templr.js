@@ -141,92 +141,14 @@ Tmpl.mergeArrays = function (a, b) {
     }
 }
 
-Tmpl.Node = function(node){
+Tmpl.newNode = function (type, value) {
     return {
-        node: node,
-        next: "",
-        prev: ""
-    }
-}
-
-Tmpl.newNode = function (name) {
-    return {
-        name: name,
+        type: type,
+        value: value,
         parent: null,
-        blocks: [],
-        slots: [],
-        children: [],
-        child: function (entry, type) {
-            this.children.push(entry);
-            switch (type) {
-                case "block": {
-                    this.blocks.push({ name: entry.value, start: this.children.length - 1, end: -1 });
-                    break;
-                }
-                case "block$": {
-                    this.blocks[this.blocks.length - 1].end = this.children.length - 1;
-                    break;
-                }
-                case "slot": {
-                    this.slots.push({ name: entry.value, start: this.children.length - 1, end: -1 });
-                    break;
-                }
-                case "slot$": {
-                    this.slots[this.slots.length - 1].end = this.children.length - 1;
-                    break;
-                }
-                default: {
-                    break;
-                }
-            }
-        },
-        build(stack, root, chain, index){
-            var current = chain[index];
-            for (var len = 0; len < root.children.length; len++) {
-                let el = root.children[len];
-                if (!el.matched.startsWith("@extend{")) {
-                    if (el.matched.startsWith("@slot{")) {
-                        let slot_name = el.value.trim();
-                        var block = current.blocks.find(e => e.name.trim() === slot_name);
-
-                        if (block) {
-                            var slot = root.slots.find(s => s.name.trim() === slot_name);
-                            var super_content = root.children.slice(slot.start + 1, slot.end);
-                            current.children.slice(block.start, block.end + 1).forEach(b => {
-                                if (b.matched.startsWith("@super{")) {
-                                    stack = stack.concat(super_content);
-                                }
-                                else if(b.matched.startsWith("@slot{")) {
-                                    var slot_content = this.build(stack, chain[index--], chain, index);
-                                    stack = stack.concat(slot_content);
-                                }
-                                else if (!b.matched.startsWith("@block{")) {
-                                    stack.push(b);
-                                }
-                            });
-                            len += (slot.end - slot.start);
-                        }
-                    }
-                    else {
-                        stack.push(el);
-                    }
-                }
-            }
-            return stack;
-        },
-
-        render() {
-            var stack = [];
-            var chain = [];
-            var root = this;
-
-            do {
-                chain.push(root);
-                root = root.parent;
-            } while (root);
-            
-            return this.build(stack, chain[0], chain, chain.length - 1);
-        }
+        child: null,
+        next: null,
+        prev: null
     }
 }
 
@@ -234,7 +156,26 @@ Tmpl.buildElements = function (template, name) {
     var regex = /(@\{(.+?)\})|(@eval\{(.+?)\})|(@set\{(\w+?=.+?)\})|(@if\{(.+?)\})|(@elif\{(.+?)\})|(@else\{\})|(@end\{\})|(@for\{(.+?)\})|(@incl\{(.+?)\})|(@extend\{(.*?)\})|(@block\{(.*?)\})|(@super\{\})|(@slot\{(.*?)\})/g;
     var match;
     var start = 0;
-    var element = this.newNode(name);
+    var parent = this.newNode('node', name);
+    var current;
+    var link = function(type, value){
+        let node = Tmpl.newNode(type, value);
+        node.parent = parent;
+        current.next = node;
+        node.prev = current;
+        current = node;
+    }
+    var branch = function(node){
+        var curr = node;
+        return {
+            get: function(){
+                return curr;
+            },
+            set: function(node){
+                curr = node;
+            }
+        }
+    }
     //process
     while ((match = regex.exec(template)) != null) {
         // for (var i in match) {
@@ -246,79 +187,78 @@ Tmpl.buildElements = function (template, name) {
         var text = template.substring(start, match.index);
         if (text.trim().length > 0) {
             Logger.log('text before next match -> ' + text);
-            element.child({ matched: "", value: text }, 'text');
+            link('text', { matched: "", value: text });
         }
 
         if (matched.startsWith("@{")) {
-            //must be an expression
             val = match[2];
             Logger.log('@{} expr matched -> ' + match[1]);
-            element.child({ matched: matched, value: val }, 'expr');
+            link('expr', { matched: matched, value: val });
         } else if (matched.startsWith("@eval{")) {
             val = match[4];
             Logger.log('@eval matched -> ' + match[3]);
-            element.child({ matched: matched, value: val }, 'eval');
+            link('eval', { matched: matched, value: val });
         } else if (matched.startsWith("@set{")) {
             val = match[6];
             Logger.log("@set statement matched -> " + match[5]);
-            element.child({ matched: matched, value: val }, 'set');
+            link('set', { matched: matched, value: val });
         } else if (matched.startsWith("@if{")) {
             val = match[8];
             Logger.log("@if condition matched -> " + match[7]);
-            element.child({ matched: matched, value: val }, 'if');
+            link('if', { matched: matched, value: val });
         } else if (matched.startsWith("@elif{")) {
             val = match[10];
             Logger.log("@elif condition matched -> " + match[9]);
-            element.child({ matched: matched, value: val }, 'elif');
+            link('elif', { matched: matched, value: val });
         } else if (matched == "@else{}") {
             val = null;
             Logger.log("@else condition reached -> " + match[11]);
-            element.child({ matched: matched, value: val }, 'else');
+            link('else', { matched: matched, value: val });
         } else if (matched == "@end{}") {
             val = null;
             Logger.log('reached @end of statements -> ' + match[12]);
-            element.child({ matched: matched, value: val }, 'end');
+            link('end', { matched: matched, value: val });
         } else if (matched.startsWith("@for{")) {
             val = match[14];
             Logger.log("@for condition matched -> " + match[13]);
-            element.child({ matched: matched, value: val }, 'for');
+            link('for', { matched: matched, value: val });
         } else if (matched.startsWith("@incl{")) {
             val = match[16];
             Logger.log("@incl statement matched -> " + match[15]);
-            element.child({ matched: matched, value: val }, 'incl');
-            var child = this.buildElements(this.loadTemplate(val), val, element);
-            element.child(child);
+            link({ matched: matched, value: val }, 'incl');
+            var include = this.buildElements(this.loadTemplate(val), val);
+            link('incl', include);
         } else if (matched == "@extend{}") {
             val = null;
             Logger.log('end of @extend{} directive reached -> ' + match[17]);
-            element.child({ matched: matched, value: val }, 'extend$');
+            link('extend$', { matched: matched, value: val });
             return element;
         } else if (matched.startsWith("@extend{")) {
             val = match[18];
             Logger.log('beginning of @extend{} directive matched -> ' + match[17]);
-            element.child({ matched: matched, value: val }, 'extend');
-            var parent = this.buildElements(this.loadTemplate(val), val, element);
-            element.parent = parent;
+            link({ matched: matched, value: val }, 'extend');
+            var extend = this.buildElements(this.loadTemplate(val), val);
+            parent.parent = extend;
         } else if (matched == "@block{}") {
             val = null;
             Logger.log("end of @block directive reached -> " + match[19]);
-            element.child({ matched: matched, value: val }, 'block$');
+            link('block$', { matched: matched, value: val });
         } else if (matched.startsWith("@block{")) {
             val = match[20];
             Logger.log("@block directive matched -> " + match[19]);
-            element.child({ matched: matched, value: val }, 'block');
+            link('block', { matched: matched, value: val });
         } else if (matched.startsWith("@super{")) {
             val = null;
             Logger.log("@super directive matched -> " + match[21]);
-            element.child({ matched: matched, value: val }, 'super');
+            link('super', { matched: matched, value: val });
         } else if (matched == "@slot{}") {
             val = null;
             Logger.log("end of @slot directive reached -> " + match[22]);
-            element.child({ matched: matched, value: val }, 'slot$');
+            link('slot$', { matched: matched, value: val });
         } else if (matched.startsWith("@slot{")) {
             val = match[23];
             Logger.log("beginning of @slot{} directive matched -> " + match[22]);
-            element.child({ matched: matched, value: val }, 'slot');
+            link('slot', { matched: matched, value: val });
         } else {
             throw Error('unexpected token matched -> ' + matched);
         }
@@ -329,14 +269,10 @@ Tmpl.buildElements = function (template, name) {
     text = template ? template.substring(start) : "";
     if (text.trim().length > 0) {
         Logger.log('text before end of template -> ' + text);
-        element.child({ matched: "", value: text }, 'text');
+        link('text', { matched: "", value: text });
     }
     //return
     return element;
-}
-
-Tmpl.orderElements = function (element) {
-
 }
 
 Tmpl.loadTemplate = function (name) {
