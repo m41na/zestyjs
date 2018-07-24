@@ -145,8 +145,7 @@ Tmpl.newNode = function (type, value) {
     return {
         type: type,
         value: value,
-        parent: null,
-        child: null,
+        branch: null,
         next: null,
         prev: null
     }
@@ -160,19 +159,24 @@ Tmpl.buildElements = function (template, name) {
     var current;
     var link = function(type, value){
         let node = Tmpl.newNode(type, value);
-        node.parent = parent;
         current.next = node;
         node.prev = current;
         current = node;
     }
-    var branch = function(node){
-        var curr = node;
+    var branch = function(){
+        var curr = null;
         return {
-            get: function(){
-                return curr;
+            end: function(node){
+                current.next = node;
+                node.prev = current;
+                current = curr;
+                return current;
             },
-            set: function(node){
+            start: function(node){
                 curr = node;
+                curr.branch = node;
+                curr.prev = current;
+                current = curr.branch;
             }
         }
     }
@@ -225,20 +229,18 @@ Tmpl.buildElements = function (template, name) {
         } else if (matched.startsWith("@incl{")) {
             val = match[16];
             Logger.log("@incl statement matched -> " + match[15]);
-            link({ matched: matched, value: val }, 'incl');
+            link('incl', { matched: matched, value: val });
             var include = this.buildElements(this.loadTemplate(val), val);
-            link('incl', include);
+            include.parent = current;
         } else if (matched == "@extend{}") {
             val = null;
             Logger.log('end of @extend{} directive reached -> ' + match[17]);
-            link('extend$', { matched: matched, value: val });
-            return element;
+            branch().end('incl', { matched: matched, value: val });
         } else if (matched.startsWith("@extend{")) {
             val = match[18];
             Logger.log('beginning of @extend{} directive matched -> ' + match[17]);
-            link({ matched: matched, value: val }, 'extend');
-            var extend = this.buildElements(this.loadTemplate(val), val);
-            parent.parent = extend;
+            link('extend', { matched: matched, value: val });
+            branch().start(this.buildElements(this.loadTemplate(val), val));
         } else if (matched == "@block{}") {
             val = null;
             Logger.log("end of @block directive reached -> " + match[19]);
