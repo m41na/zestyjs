@@ -8,6 +8,8 @@ target/
 *.class
 *.log
 *.war
+*.o
+*.s
 /data/**
 nbactions.xml
 /nbproject/

@@ -1,0 +1,51 @@
+
+N1 ["@extend{layout.html}"],
+N2 ["@block{ title }"],
+N3 [    "<p>MY TITLE!</p > ",]
+N4 ["@block{}"]
+N5 ["@block{ main }"],
+N6 [    "@super{}"]
+N7 [    "<p>MY CONTENT!</p > ",]
+N8 ["@block{}"]
+N9 ["@extend{}"]
+
+M1 ["<div id=\"layout\">",]
+M2 [    "<div id=\"title\">]
+M3 [	    @slot{title}]
+M4 [	    	Placeholder Title]
+M5 [	    @slot{}]
+M6 [	</div>",
+M7 [    "<div id=\"app\">",]
+M8 [    "@slot{ main }",]
+M9 [    "<h3>Messages</h3>",]
+M10[    "@slot{}",]
+M11[    "</div >",]
+M12["</div>"]
+
+-N1-
+-|
+-|--B1--N2--N3--N4- 
+ |          
+-|--B2--N5--B3--N7--N8--N9
+ |           |
+ |          -N6-
+ | 
+-M1--M2--B4--M6--M7--B5--M11--M12-
+     	 |	     |
+        -M3--M4--M5- |
+	      	     |
+	     	    -M8--M9--M10-
+
+extend		: (o_extend (block *) c_extend)
+block		: (o_block ((markup *)|(super ?)|(slot *)|(markup *)) c_block)
+super		: (markup *)
+slot		: (o_slot (markup *) c_slot)
+o_extend	: @extend{(.+?)}
+c_extend	: @extend{}
+o_block 	: @block{.+?}
+c_block		: @block{}
+super	 	: @super{}
+o_slot	 	: @slot{.+?}
+c_slot		: @slot{}
+incl		: @incl{.+?}
+markup		: (.*)
