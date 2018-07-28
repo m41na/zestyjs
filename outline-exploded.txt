@@ -35,17 +35,3 @@ M12["</div>"]
         -M3--M4--M5- |
 	      	     |
 	     	    -M8--M9--M10-
-
-extend		: (o_extend (block *) c_extend)
-block		: (o_block ((markup *)|(super ?)|(slot *)|(markup *)) c_block)
-super		: (markup *)
-slot		: (o_slot (markup *) c_slot)
-o_extend	: @extend{(.+?)}
-c_extend	: @extend{}
-o_block 	: @block{.+?}
-c_block		: @block{}
-super	 	: @super{}
-o_slot	 	: @slot{.+?}
-c_slot		: @slot{}
-incl		: @incl{.+?}
-markup		: (.*)

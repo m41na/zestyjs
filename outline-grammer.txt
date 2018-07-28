@@ -1,0 +1,41 @@
+extend		: [o_extend (block)+ c_extend]
+block		: [o_block ((markup)*|(super)?|(slot)+|(incl)*) c_block]
+slot		: [o_slot (markup)* c_slot]
+o_extend	: @extend{(variable|element|filename)}
+c_extend	: @extend{}
+o_block 	: @block{variable}
+c_block		: @block{}
+o_slot	 	: @slot{variable}
+c_slot		: @slot{}
+super	 	: @super{}
+incl		: @incl{(variable|element|filename)}
+variable	: \w+
+element		: dom:\w+
+filename	: file:\w+
+markup		: (.*)
+
+
+
+for		: [o_for for_expr (for|if|stmt|markup)+ o_end]
+for_expr	: [{key (, index)? in iterable}]
+if		: [o_if if_expr (for|if|stmt|markup)+ (elif)* (else)? o_end]
+if_expr		: [{expr}]
+elif		: [o_elif if_expr (for|if|stmt|markup)+]
+else		: [o_else]
+eval		: [o_eval eval_expr]
+eval_expr	: [{expr}]
+o_for		: @for
+o_if		: @if
+o_elif		: @elif
+o_else		: [@else o_close]
+o_end		: [@end o_close]
+o_close		: {}
+o_eval		: @eval
+property	: @{path}
+iterable	: (property|expr)
+index		: \w+
+key		: \w+
+path		: .+
+expr		: .+
+	
+

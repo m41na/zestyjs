@@ -57,7 +57,7 @@ class Lexer{
     }
 
     getNextToken(){
-        let start = this.pos, oparen = 0;  
+        let start = this.pos, oparen = 0, cparen = 0;  
 
         while(this.curr_char != null){
             if(/\s/g.test(this.curr_char)){
@@ -91,6 +91,14 @@ class Lexer{
                 }
 
                 if(this.curr_char == '}' && this.text.charAt(this.pos - 1) != '\\'){
+                    this.advance();
+                    start = this.text_pos;
+                    this.text_pos = this.pos;
+                    this.reading = false;
+                    return this.createToken(this.text.substring(start, this.pos), oparen);
+                }
+
+                if(this.curr_char  == '}' && this.text.charAt(this.pos - 1) != '\\'){
                     this.advance();
                     start = this.text_pos;
                     this.text_pos = this.pos;
@@ -240,7 +248,7 @@ class Interpreter{
             this.curr_token = this.lexer.getNextToken();
         }
         else{
-            throw Error(`${token.type} - unexpected token encountered`);
+            throw Error(`${type} - unexpected token encountered`);
         }
     }
 
@@ -251,7 +259,7 @@ class Interpreter{
         return markup;
     }
 
-    slot(){
+    for(){
         let token = this.curr_token;
         let slot = new NewNode(token);
         this.eat(token.type);
@@ -410,67 +418,54 @@ class Interpreter{
 }
 
 //******* testing **********//
-var incl_html = [
-    "<p>Red</p>",
-    "<p>Green</p>"
-].join("");
-
-var colors_html = [
-    "@extend{simple_html}",
-
-    "@block{ colors }", 
-    "<p>Yellow</p>",
-    "<p>Blue</p>",
-    "@incl{incl_html}",
-    "@block{}",
-
-    "@extend{}"
-].join("");
-
 var simple_html = [
-    "@extend{layout_html}",
-
-    "@block{ title } Simple Layout @block{}",
-
-    "@block{ main }",
-    "<div id=\"content\">",
-    "@super{}",
-    "<p>It's your birthday!!</p>",
-    "@slot{colors}<p>Rainbow</p>@slot{}",
-    "</div > ",
-    "@block{}",
-
-    "@extend{}"
-].join("");
-
-var layout_html = [
-    "<div id=\"layout\">",
-
-    "<div id=\"title\">@slot{title}Placeholder Title@slot{}</div>",
-
-    "<div id=\"app\">",
-    "@slot{ main }",
-    "<h3>Messages</h3>",
-    "@slot{}",
+"<div id=\"app\">",
+    "<h3>sports</h3>",
+    "<ul id=\"listing\">",
+        "@for{sport, index in sports}",
+        "<li><span>@eval{index + 1}</span> - @{sport.name}</li>",
+        "@end{}",
+    "</ul>",
+    "",
+    "<div>",
+        "@if{sports[0].rank == 2}",
+        "<p style=\"background-color:green;\">@{sports[0].name}</p>",
+        "@else{}",
+        "<p style=\"background-color:red;\">@{sports[0].name}</p>",
+        "@end{}",
     "</div>",
-    "<div>Mode colors: ",
-    "@incl{incl_html}</div>",
-    "</div>"
+    "",
+    "<ul id=\"listing-1\">",
+        "@for{sport, index in sports} @if{(index % 2 ) > 0}",
+        "<li style=\"background-color:yellow;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
+        "@else{}",
+        "<li style=\"background-color:blue;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
+        "@end{} @end{}",
+    "</ul>",
+    "",
+    "<ul id=\"listing-3\">",
+        "@for{sport, index in sports} @if{(index % 3 ) > 0}",
+        "<li style=\"background-color:orange;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
+        "@else{}",
+        "<li style=\"background-color:indigo;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
+        "@end{} @end{}",
+    "</ul>",
+"</div>"
 ].join("");
 
 
-let lexer = new Lexer(colors_html);
+let lexer = new Lexer(simple_html);
 let token = null;
 while((token = lexer.getNextToken()) != null){
     console.log(token);
 }
 
-let parser = new Interpreter(new Lexer(colors_html));
-let colors = parser.build();
-colors.visit({
-    accept: function(node){
-        if(node.token().type == 'MARKUP'){
-            console.log(node.token().value);
-        }
-    }
-});
+// let parser = new Interpreter(new Lexer(colors_html));
+// let colors = parser.build();
+// colors.visit({
+//     accept: function(node){
+//         if(node.token().type == 'MARKUP'){
+//             console.log(node.token().value);
+//         }
+//     }
+// });
