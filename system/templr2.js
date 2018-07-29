@@ -84,13 +84,20 @@ class Lexer{
             }
 
             if(this.reading){
-                if(this.curr_char == '{' && this.text.charAt(this.pos - 1) != '\\'){
+                let next_char = this.text.charAt(this.pos + 1);
+                if(next_char == '{'){
+                    this.advance();
+                    this.text_pos = this.pos;
+                    return this.createToken(this.text.substring(start, this.pos));
+                }
+
+                if(this.curr_char == '{'){
                     oparen = this.pos - start;
                     this.advance();
                     continue;
                 }
 
-                if(this.curr_char == '}' && this.text.charAt(this.pos - 1) != '\\'){
+                if(this.curr_char == '}'){
                     this.advance();
                     start = this.text_pos;
                     this.text_pos = this.pos;
@@ -110,43 +117,48 @@ class Lexer{
     }
 
     createToken(input, oparen){
-        switch(input.substring(0, oparen)){
-            case '@extend': {
-                let payload = input.substring(oparen + 1, input.length - 1);
-                if(payload.trim().length == 0){
-                    return new Token('C_EXTEND', '');
+        if(/\{.+,?.+in.+\}/.test(input)){
+            return new Token('FOR_EXPR', input);
+        }
+        else if(/\{\s?}/.test(input)){
+            return new Token('O_CLOSE', input);
+        }
+        else if(/\{.+?}/.test(input)){
+            return new Token('EXPR', input);
+        }
+        else{
+            switch(input.substring(0, oparen)){
+                case '@for': {
+                    return new Token('O_FOR', input);
                 }
-                else{
-                    return new Token('O_EXTEND', payload);
+                case '@end': {
+                    return new Token('O_END', input);
                 }
-            }
-            case '@block': {
-                let payload = input.substring(oparen + 1, input.length - 1);
-                if(payload.trim().length == 0){
-                    return new Token('C_BLOCK', '');
+                case '@': {
+                    return new Token('O_PROP', input);
                 }
-                else{
-                    return new Token('O_BLOCK', payload);
+                case '@eval': {
+                    return new Token('O_EVAL', input);
                 }
-            }
-            case '@slot': {
-                let payload = input.substring(oparen + 1, input.length - 1);
-                if(payload.trim().length == 0){
-                    return new Token('C_SLOT', '');
+                case '@set': {
+                    return new Token('O_SET', input);
                 }
-                else{
-                    return new Token('O_SLOT', payload);
+                case '@if': {
+                    return new Token('O_IF', input);
                 }
-            }
-            case '@super': {
-                return new Token('SUPER', '');
-            }
-            case '@incl': {
-                let payload = input.substring(oparen + 1, input.length  -1);
-                return new Token('INCLUDE', payload);
-            }
-            default: {
-                return  new Token('MARKUP', input);
+                case '@elif': {
+                    return new Token('O_ELIF', input);
+                }
+                case '@else': {
+                    return new Token('O_ELSE', input);
+                }
+                case '@incl': {
+                    let payload = input.substring(oparen + 1, input.length  -1);
+                    return new Token('INCLUDE', payload);
+                }
+                default: {
+                    return  new Token('MARKUP', input);
+                }
             }
         }
     }
@@ -202,29 +214,6 @@ let NewNode = function (new_token) {
             nodes.forEach(e=> e.visit(visitor));
         }
     }
-
-    this.accept = function(node){
-        if(node.token().type == 'O_BLOCK'){
-            let slot_index = this.find('O_SLOT');
-            if(slot_index > -1){
-                let slot_node = this.nodes()[slot_index];  
-
-                let block_name = node.token().value.trim();
-                let slot_name = slot_node.token().value.trim();            
-                
-                if(block_name == slot_name){
-                    let super_index = -1;
-                    if((super_index = node.find('SUPER')) > -1){
-                        node.splice(super_index, slot_node.nodes());
-                    }
-                    return this.replace(slot_index, node);
-                }
-            }
-        }
-        if(nodes.length > 0){
-            nodes.forEach(e=> e.accept(node));
-        }
-    }
 }
 
 class Interpreter{
@@ -252,51 +241,120 @@ class Interpreter{
         return markup;
     }
 
-    slot(){
+    end(){
         let token = this.curr_token;
-        let slot = new NewNode(token);
-        this.eat(token.type);
-        let markup = this.markup();
-        slot.push(markup);
-        token = this.curr_token;
         let end = new NewNode(token);
-        slot.push(end);
         this.eat(token.type);
-        return slot;
-    }
 
-    super(){
-        let token = this.curr_token;
-        let node = new NewNode(token);
-        this.eat(token.type);
-        return node;
-    }
-
-    block(){
-        let token = this.curr_token;
-        let block = new NewNode(token);
-        this.eat(token.type);
         token = this.curr_token;
-        while(token.type != 'C_BLOCK'){
+        let close = this.close();
+        end.push(close);
+        return end;
+    }
+
+    close(){
+        let token = this.curr_token;
+        let close = new NewNode(token);
+        this.eat(token.type);
+        return close;
+    }
+
+    expr(){
+        let token = this.curr_token;
+        let expr = new NewNode(token);
+        this.eat(token.type);
+        return expr;
+    }
+
+    set_expr(){
+        let token = this.curr_token;
+        let set_prop = new NewNode(token);
+        this.eat(token.type);
+
+        let set_expr = this.expr();
+        set_prop.push(set_expr);
+        return set_prop;
+    }
+
+    eval_expr(){
+        let token = this.curr_token;
+        let eval_cond = new NewNode(token);
+        this.eat(token.type);
+
+        let eval_expr = this.expr();
+        eval_cond.push(eval_expr);
+        return eval_cond;
+    }
+
+    prop_expr(){
+        let token = this.curr_token;
+        let prop_eval = new NewNode(token);
+        this.eat(token.type);
+
+        token = this.curr_token;
+        let prop_expr = this.expr();
+        prop_eval.push(prop_expr);
+        return prop_eval;
+    }
+
+    for_loop(){
+        let token = this.curr_token;
+        let for_loop = new NewNode(token);
+        this.eat(token.type);
+
+        let for_expr = this.for_expr();
+        for_loop.push(for_expr);
+        
+        token = this.curr_token;
+        let for_body = this.for_body(for_loop);
+        return for_body;
+    }
+
+    for_expr(){
+        let token = this.curr_token;
+        let for_exp = new NewNode(token);
+        this.eat(token.type);
+        return for_exp;
+    }
+
+    for_body(target){
+        let token = this.curr_token;
+        token = this.curr_token;
+        while(token.type != "O_END"){
             switch(token.type){
                 case 'MARKUP': {
                     let markup = this.markup();
-                    block.push(markup);
+                    target.push(markup);
                     break;
                 }
-                case 'SUPER': {
-                    let node = this.super();
-                    block.push(node);
+                case 'O_FOR': {
+                    let for_loop = this.for_loop();
+                    target.push(for_loop);
                     break;
                 }
-                case 'O_SLOT': {
-                    let slot = this.slot();
-                    block.push(slot);
+                case 'O_IF': {
+                    let if_block = this.if_block();
+                    target.push(if_block);
+                    break;
+                }
+                case 'O_PROP': {
+                    let prop_expr = this.prop_expr();
+                    target.push(prop_expr)
+                    break;
+                }
+                case 'O_EVAL': {
+                    let eval_expr = this.eval_expr();
+                    target.push(eval_expr)
+                    break;
+                }
+                case 'O_SET': {
+                    let set_expr = this.set_expr();
+                    target.push(set_expr)
                     break;
                 }
                 case 'INCLUDE': {
                     let include = this.include();
-                    block.push(include);
+                    target.push(include);
                     break;
                 }
                 default: {
@@ -305,53 +363,128 @@ class Interpreter{
             }
             token = this.curr_token;
         }
-
-        let end = new NewNode(token);
-        block.push(end);
-        this.eat(token.type);
-        return block;
+        //@end reached
+        let end = this.end();
+        target.push(end);
+        return target;
     }
 
-    extend(){
+    if_block(){
         let token = this.curr_token;
-        let extend = new NewNode(token);
+        let if_block = new NewNode(new Token('IF_BLOCK', ''));
+        this.if_expr(if_block);
+        
+        token = this.curr_token
+        while(token.type != 'O_END'){
+            token = this.curr_token;
+            if(token.type == "O_ELIF"){
+                this.elif_expr(if_block);
+            }
+
+            token = this.curr_token;
+            if(token.type == "O_ELSE"){
+                this.else_expr(if_block);
+            }
+        }
+
+        //@end reached
+        let end = this.end()
+        if_block.push(end);
+        return if_block;
+    }
+
+    if_expr(if_block){
+        let token = this.curr_token;
+        let if_body = new NewNode(token);
         this.eat(token.type);
+        
         token = this.curr_token;
-        while(token.type != 'C_EXTEND'){
+        let if_expr = this.expr()
+        if_body.push(if_expr);
+
+        this.block_body(if_body);
+        if_block.push(if_body);
+    }
+
+    elif_expr(if_block){
+        let token = this.curr_token;
+        let elif_body = new NewNode(token);
+        this.eat(token.type);
+
+        token = this.curr_token;
+        let elif_expr = this.expr();
+        elif_body.push(elif_expr);
+
+        this.block_body(elif_body);
+        if_block.push(elif_body);
+    }
+
+    else_expr(if_block){
+        let token = this.curr_token;
+        let else_body = new NewNode(token);
+        this.eat(token.type);
+        
+        token = this.curr_token;
+        let close = this.close();
+        else_body.push(close);
+
+        this.block_body(else_body);
+        if_block.push(else_body);        
+    }
+
+    block_body(target){
+        let token = this.curr_token;
+        token = this.curr_token;
+        while(!["O_END",'O_ELIF','O_ELSE'].includes(token.type)){
             switch(token.type){
-                case 'O_BLOCK': {
-                    let block = this.block();
-                    extend.push(block);
+                case 'MARKUP': {
+                    let markup = this.markup();
+                    target.push(markup);
+                    break;
+                }
+                case 'O_FOR': {
+                    let for_loop = this.for_loop();
+                    target.push(for_loop);
+                    break;
+                }
+                case 'O_IF': {
+                    let if_block = this.if_block();
+                    target.push(if_block);
+                    break;
+                }
+                case 'O_PROP': {
+                    let prop_expr = this.prop_expr();
+                    target.push(prop_expr)
+                    break;
+                }
+                case 'O_EVAL': {
+                    let eval_expr = this.eval_expr();
+                    target.push(eval_expr);
+                    break;
+                }
+                case 'O_SET': {
+                    let set_expr = this.set_expr();
+                    target.push(set_expr)
+                    break;
+                }
+                case 'INCLUDE': {
+                    let include = this.include();
+                    target.push(include);
                     break;
                 }
                 default: {
-                    throw Error(`${token.type} - unexpected token encountered in @extend section`);
+                    throw Error(`${token.type} - unexpected token encountered`);
                 }
             }
             token = this.curr_token;
         }
-
-        let end = new NewNode(token);
-        extend.push(end);
-        this.eat(token.type);
-
-        //expand the parent template
-        let source = extend.token().value;
-        let template = this.loadTemplate(source);
-        let parser = new Interpreter(new Lexer(template));
-        let parent = parser.build();
-        //using each @block, visit the parent and replace matching @slot 
-        let block = null;
-        while((block = extend.pluck('O_BLOCK')) != null){
-            parent.accept(block);
-        }        
-        return parent;
     }
 
     include(){
         let token = this.curr_token;
         let include = new NewNode(token);
         this.eat(token.type);
+
         let source = token.value;
         let template = this.loadTemplate(source);
         let parser = new Interpreter(new Lexer(template));
@@ -385,18 +518,29 @@ class Interpreter{
     build(){
         while(this.curr_token != null){
             let token = this.curr_token;
-            if(token.type == 'O_EXTEND'){                
-                let extend = this.extend();
-                this.head.push(extend);
-                break;
+            if(token.type == 'O_FOR'){                
+                let for_loop = this.for_loop();
+                this.head.push(for_loop);
             }
             else if(token.type == 'MARKUP'){
                 let markup = this.markup();
                 this.head.push(markup);
             }
-            else if(token.type == 'O_SLOT'){
-                let slot = this.slot();
-                this.head.push(slot);
+            else if(token.type == 'O_IF'){
+                let if_block = this.if_block();
+                this.head.push(if_block);
+            }
+            else if(token.type == 'O_PROP') {
+                let prop_expr = this.prop_expr();
+                this.head.push(prop_expr);
+            }
+            else if(token.type == 'O_EVAL') {
+                let eval_expr = this.eval_expr();
+                this.head.push(eval_expr);
+            }
+            else if(token.type == 'O_SET') {
+                let set_expr = this.set_expr();
+                this.head.push(set_expr);
             }
             else if(token.type == 'INCLUDE'){
                 let include = this.include();
@@ -410,68 +554,397 @@ class Interpreter{
     }
 }
 
+let Tmpl = {};
+
+Tmpl.objProp = function (path, obj) {
+    return path.split(/\.|\[['"]?(.+?)["']?\]/).filter(function (val) {
+        return val;
+    }).reduce(function (prev, curr) {
+        return prev ? prev[curr] : null;
+    }, obj);
+}
+
+Tmpl.setProp = function (expr) {
+    return function (ctx) {
+        var parts = expr.split("=");
+        var prop = parts[0].trim();
+        ctx[prop] = eval(parts[1].trim());
+        return prop;
+    }
+}
+
+Tmpl.resProp = function (expr) {
+    return function (ctx) {
+        return this.objProp(expr, ctx);
+    }.bind(this);
+}
+
+Tmpl.resExpr = function (expr) {
+    return function (ctx) {
+        //padd with a space at the end for regex to match
+        var exec = expr.concat(' ').replace(/(\w+(\.|\[).*?)\s/g, function (m, p) {
+            return this.objProp(p, ctx);
+        }.bind(this));
+        if (exec.search(/([a-zA-Z_]+?)\s/g) > -1) {
+            exec = expr.concat(' ').replace(/([a-zA-Z_]+?)\s/g, function (m, p) {
+                var e = this.objProp(p, ctx);
+                return this.isNumeric(e) ? e : this.isString(e) ? "'" + e + "'" : e;
+            }.bind(this));
+        }
+        Logger.log('executable expression -> ' + exec);
+        return eval(exec);
+    }.bind(this);
+}
+
+Tmpl.isNumeric = function (n) {
+    return !isNaN(parseFloat(n)) && isFinite(n);
+}
+
+Tmpl.isNumber = function (value) {
+    return typeof value === 'number' && isFinite(value);
+}
+
+Tmpl.isString = function (value) {
+    return typeof value === 'string' || value instanceof String;
+}
+
+Tmpl.isObject = function (value) {
+    return value && typeof value === 'object' && value.constructor === Object;
+}
+
+Tmpl.isArray = function (value) {
+    return value && Array.isArray(value);
+}
+
+Tmpl.isFunction = function (value) {
+    return typeof value === 'function';
+}
+
+Tmpl.isRegExp = function (value) {
+    return value && typeof value === 'object' && value.constructor === RegExp;
+}
+
+Tmpl.isError = function (value) {
+    return value instanceof Error && typeof value.message !== 'undefined';
+}
+
+Tmpl.isDate = function (value) {
+    return value instanceof Date;
+}
+
+Tmpl.mergeArrays = function (a, b) {
+    //in-place merging instead of a.concat(b) which creates new array
+    if (a.length > b.length) {
+        a.push.apply(a, b);
+        return a;
+    }
+    else {
+        b.unshift.apply(b, a);
+        return b;
+    }
+}
+
+Tmpl.forParams = function (expr) {
+    var regex_2 = /(\w+?)\s*?in\s*?(\w+?)$/g;
+    var regex_3 = /(\w+?)\s*?,?\s*?(\w+?)\s*?in\s*?(\w+?)$/g;
+    var match;
+    if (!expr.includes(",")) {
+        if ((match = regex_2.exec(expr)) != null) {
+            return { cursor: match[1], elements: match[2] , key: undefined};
+        } else {
+            throw Error('seems like \'' + expr + '\' is an invalid @for expression');
+        }
+    } else {
+        if ((match = regex_3.exec(expr)) != null) {
+            return { cursor: match[1], elements: match[3], key: match[2] };
+        } else {
+            throw Error('seems like \'' + expr + '\' is an invalid @for expression');
+        }
+    }
+}
+
+Tmpl.walkTree = function(start){
+    var head, tail;
+    var marked = [];
+
+    function init(root, depth){
+        head = {node: root, next: undefined, id: depth};
+        tail = head;
+
+        function walk(node, id){
+            let nodes = node.nodes();
+            if(nodes.length > 0){
+                nodes.forEach(e=> {
+                    let next = {node: e, next: undefined, id: id};
+                    tail.next = next;
+                    tail = next;
+                    walk(e, id + 1);
+                });
+            }
+            nodes = null;
+        }
+        walk(tail.node, depth + 1);
+    }
+
+    init(start, 0);
+    tail = head;
+    return {
+        next: function(){
+            if(tail.next){
+                //console.log(tail.id + " - " + tail.node.token().type);
+                tail = tail.next;
+                return tail.node;
+            }
+            else{
+                head = null;
+                tail = null;
+                return null;
+            }
+        },
+        mark: function(pos){
+            if(pos){
+                marked.push(pos);
+            }
+            else{
+                marked.push(tail);
+            }
+        },
+        jump: function(pos){
+            if(pos){
+                tail = pos;
+            }
+            else{
+                if(marked.length > 0){
+                    tail = marked.pop();
+                }
+                else{
+                    throw Error('there is no marked node to jump to');
+                }
+            }
+        },
+        siblings(){
+            let list = [];
+            let temp = tail, id = tail.id;
+            list.push(temp);
+            while(temp.next){
+                temp = temp.next;
+                if(temp.id == id){
+                    list.push(temp);
+                }
+                if(temp.id < id){
+                    break;
+                }
+            }
+            return list;
+        },
+        reset: function(node){
+            init(node);
+        }
+    }
+}
+
 //******* testing **********//
-var incl_html = [
-    "<p>Red</p>",
-    "<p>Green</p>"
-].join("");
-
-var colors_html = [
-    "@extend{simple_html}",
-
-    "@block{ colors }", 
-    "<p>Yellow</p>",
-    "<p>Blue</p>",
-    "@incl{incl_html}",
-    "@block{}",
-
-    "@extend{}"
-].join("");
-
-var simple_html = [
-    "@extend{layout_html}",
-
-    "@block{ title } Simple Layout @block{}",
-
-    "@block{ main }",
-    "<div id=\"content\">",
-    "@super{}",
-    "<p>It's your birthday!!</p>",
-    "@slot{colors}<p>Rainbow</p>@slot{}",
-    "</div > ",
-    "@block{}",
-
-    "@extend{}"
-].join("");
-
-var layout_html = [
-    "<div id=\"layout\">",
-
-    "<div id=\"title\">@slot{title}Placeholder Title@slot{}</div>",
-
-    "<div id=\"app\">",
-    "@slot{ main }",
-    "<h3>Messages</h3>",
-    "@slot{}",
+var complex_html = [
+"<div id=\"app\">",
+    "<h3>sports</h3>",
+    "<ul id=\"listing\">",
+        "@for{sport, index in sports}",
+        "<li><span>@eval{index + 1}</span> - @{sport.name}</li>",
+        "@end{}",
+    "</ul>",
+    "",
+    "<div>",
+        "@if{sports[0].rank == 2}",
+        "<p style=\"background-color:green;\">@{sports[0].name}</p>",
+        "@else{}",
+        "<p style=\"background-color:red;\">@{sports[0].name}</p>",
+        "@end{}",
     "</div>",
-    "<div>Mode colors: ",
-    "@incl{incl_html}</div>",
+    "",
+    "<ul id=\"listing-1\">",
+        "@for{sport, index in sports} @if{(index % 2 ) > 0}",
+        "<li style=\"background-color:yellow;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
+        "@else{}",
+        "<li style=\"background-color:blue;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
+        "@end{} @end{}",
+    "</ul>",
+    "",
+    "<ul id=\"listing-3\">",
+        "@for{sport, index in sports} @if{(index % 3 ) > 0}",
+        "<li style=\"background-color:orange;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
+        "@else{}",
+        "<li style=\"background-color:indigo;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
+        "@end{} @end{}",
+    "</ul>",
+"</div>"
+].join("");
+
+let if_html = [
+    "<div>",
+    "@set{x = 1} @if{ x > 2 } @{x} greater @elif{x == 3} equal @else{} less @end{}",
+    "@eval{x*10}",
     "</div>"
 ].join("");
 
+let for_html = [
+    "<div>",
+    "@for{ item, y in list} @{y} - @{item.x} awesome @end{}",
+    "@eval{x*10}",
+    "</div>"
+].join("");
 
-let lexer = new Lexer(colors_html);
-let token = null;
-while((token = lexer.getNextToken()) != null){
-    console.log(token);
-}
+// let lexer = new Lexer(complex_html);
+// let token = null;
+// while((token = lexer.getNextToken()) != null){
+//     console.log(token);
+// }
 
-let parser = new Interpreter(new Lexer(colors_html));
-let colors = parser.build();
-colors.visit({
-    accept: function(node){
-        if(node.token().type == 'MARKUP'){
-            console.log(node.token().value);
+let parser = new Interpreter(new Lexer(complex_html));
+let simple = parser.build();
+console.log(simple.print());
+
+let treeNav = Tmpl.walkTree(simple);
+//let context = {list: [{x:2},{x:4},{x:6},{x:8},{x:10}], x: 1};
+let context = {sports: [{name: "rugby"}, {name: "soccer"}, {name: "tennis"}]};
+
+let current;
+while((current = treeNav.next()) != null){    
+    let token = current.token();
+    switch(token.type){
+        case 'IF_BLOCK': {
+            renderIf(treeNav, context);
+            break;
+        }
+        case 'O_FOR': {
+            renderFor(treeNav, context);
+            break;
+        }
+        case 'MARKUP': {
+            console.log(token.value);
+            break;
+        }
+        case 'O_SET': {
+            Tmpl.setProp(current.nodes()[0].token().value.replace(/\{(.*)}/, "$1"))(context);
+            break;
+        }
+        default: {
+            break;
         }
     }
-});
+}
+
+function renderNode(treeNav, child, ctx){
+    switch(child.token().type){
+        case 'O_PROP': {
+            let res = Tmpl.resProp(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"));
+            console.log(res(ctx));
+            break;
+        }
+        case 'O_EVAL': {
+            let res = Tmpl.resExpr(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"));
+            console.log(res(ctx));
+            break;
+        }
+        case 'O_SET': {
+            Tmpl.setProp(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"), ctx);
+            break;
+        }
+        case 'MARKUP': {
+            console.log(child.token().value);
+            break;
+        }
+        case 'IF_BLOCK': {
+            renderIf(treeNav, ctx);
+            break;
+        }
+        case 'FOR_LOOP': {
+            renderFor(treeNav, ctx);
+            break;
+        }
+        default: {
+            break;
+        }
+    }
+}
+
+function renderIf(treeNav, ctx){
+    let child = treeNav.next();
+    //get direct children
+    let siblings = treeNav.siblings();
+    //test which condition is true
+    let end_if = siblings[siblings.length - 1];
+    treeNav.mark(end_if);
+    let matched = null;
+    let nomatch = null;
+    for(let i = 0; i < siblings.length; i++){
+        let test = siblings[i].node;
+        if(test.token().type == 'O_ELSE'){
+            nomatch = siblings[i];
+            break;
+        }
+
+        let expr = test.nodes()[0].token().value;
+        let isTrue = Tmpl.resExpr(expr.replace(/\{(.*)}/, "$1"));
+        if(isTrue(ctx)){
+            if(!matched){
+                matched = siblings[i];
+            }
+            else{
+                throw Error('more than one if condition was successful');
+            }
+        }
+    }
+
+    if(matched){
+        treeNav.jump(matched);
+        doFor();
+    }
+    else{
+        if(nomatch){
+            treeNav.jump(nomatch);
+            doFor();
+        }
+        else{
+            treeNav.jump();
+        }
+    }
+
+    function doFor(){
+        child = treeNav.next();
+        while(!["O_END", "O_ELIF", "O_ELSE"].includes(child.token().type)){
+            if(child.token().type == 'IF_BLOCK'){
+                renderIf(treeNav, ctx);
+            }
+            else if(child.token().type == 'FOR_LOOP'){
+                renderFor(treeNav, ctx);
+            }
+            else{
+                renderNode(treeNav, child, ctx);
+            }
+            child = treeNav.next();
+        }
+        treeNav.jump();
+    }
+}
+
+function renderFor(treeNav, context){
+    let node = treeNav.next();
+    let params = Tmpl.forParams(node.token().value.replace(/\{(.*)}/, "$1"));
+    let cursor = params.cursor, elements = context[params.elements], key = params.key;
+    var result = [];
+    var count = 0;
+    for (var index in elements) {
+        count++;
+        var ctx = {};
+        ctx[cursor] = elements[index];
+        if (key) ctx[key] = index;        
+
+        if(count < elements.length) treeNav.mark();
+        let child = treeNav.next();
+        while(child.token().type != 'O_END'){
+            renderNode(treeNav, child, ctx);
+            child = treeNav.next();
+        }
+        if(count < elements.length) treeNav.jump();
+    }
+}
