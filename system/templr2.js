@@ -236,11 +236,12 @@ class Interpreter{
     }
 
     eat(type){
+        console.log(`curr token => {type: ${this.curr_token.type}, value: ${this.curr_token.value}}`);
         if(type == this.curr_token.type){
             this.curr_token = this.lexer.getNextToken();
         }
         else{
-            throw Error(`${token.type} - unexpected token encountered`);
+            throw Error(`${type} - unexpected token encountered`);
         }
     }
 

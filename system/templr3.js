@@ -57,7 +57,7 @@ class Lexer{
     }
 
     getNextToken(){
-        let start = this.pos, oparen = 0, cparen = 0;  
+        let start = this.pos, oparen = 0;  
 
         while(this.curr_char != null){
             if(/\s/g.test(this.curr_char)){
@@ -84,21 +84,20 @@ class Lexer{
             }
 
             if(this.reading){
-                if(this.curr_char == '{' && this.text.charAt(this.pos - 1) != '\\'){
+                let next_char = this.text.charAt(this.pos + 1);
+                if(next_char == '{'){
+                    this.advance();
+                    this.text_pos = this.pos;
+                    return this.createToken(this.text.substring(start, this.pos));
+                }
+
+                if(this.curr_char == '{'){
                     oparen = this.pos - start;
                     this.advance();
                     continue;
                 }
 
-                if(this.curr_char == '}' && this.text.charAt(this.pos - 1) != '\\'){
-                    this.advance();
-                    start = this.text_pos;
-                    this.text_pos = this.pos;
-                    this.reading = false;
-                    return this.createToken(this.text.substring(start, this.pos), oparen);
-                }
-
-                if(this.curr_char  == '}' && this.text.charAt(this.pos - 1) != '\\'){
+                if(this.curr_char == '}'){
                     this.advance();
                     start = this.text_pos;
                     this.text_pos = this.pos;
@@ -118,43 +117,45 @@ class Lexer{
     }
 
     createToken(input, oparen){
-        switch(input.substring(0, oparen)){
-            case '@extend': {
-                let payload = input.substring(oparen + 1, input.length - 1);
-                if(payload.trim().length == 0){
-                    return new Token('C_EXTEND', '');
+        if(/\{.+,?.+in.+\}/.test(input)){
+            return new Token('FOR_EXPR', input);
+        }
+        else if(/\{\s?}/.test(input)){
+            return new Token('O_CLOSE', input);
+        }
+        else if(/\{.+?}/.test(input)){
+            return new Token('EXPR', input);
+        }
+        else{
+            switch(input.substring(0, oparen)){
+                case '@for': {
+                    return new Token('O_FOR', input);
                 }
-                else{
-                    return new Token('O_EXTEND', payload);
+                case '@end': {
+                    return new Token('O_END', input);
                 }
-            }
-            case '@block': {
-                let payload = input.substring(oparen + 1, input.length - 1);
-                if(payload.trim().length == 0){
-                    return new Token('C_BLOCK', '');
+                case '@': {
+                    return new Token('O_PROP', input);
                 }
-                else{
-                    return new Token('O_BLOCK', payload);
+                case '@eval': {
+                    return new Token('O_EVAL', input);
                 }
-            }
-            case '@slot': {
-                let payload = input.substring(oparen + 1, input.length - 1);
-                if(payload.trim().length == 0){
-                    return new Token('C_SLOT', '');
+                case '@if': {
+                    return new Token('O_IF', input);
                 }
-                else{
-                    return new Token('O_SLOT', payload);
+                case '@elif': {
+                    return new Token('O_ELIF', input);
                 }
-            }
-            case '@super': {
-                return new Token('SUPER', '');
-            }
-            case '@incl': {
-                let payload = input.substring(oparen + 1, input.length  -1);
-                return new Token('INCLUDE', payload);
-            }
-            default: {
-                return  new Token('MARKUP', input);
+                case '@else': {
+                    return new Token('O_ELSE', input);
+                }
+                case '@incl': {
+                    let payload = input.substring(oparen + 1, input.length  -1);
+                    return new Token('INCLUDE', payload);
+                }
+                default: {
+                    return  new Token('MARKUP', input);
+                }
             }
         }
     }
@@ -210,29 +211,6 @@ let NewNode = function (new_token) {
             nodes.forEach(e=> e.visit(visitor));
         }
     }
-
-    this.accept = function(node){
-        if(node.token().type == 'O_BLOCK'){
-            let slot_index = this.find('O_SLOT');
-            if(slot_index > -1){
-                let slot_node = this.nodes()[slot_index];  
-
-                let block_name = node.token().value.trim();
-                let slot_name = slot_node.token().value.trim();            
-                
-                if(block_name == slot_name){
-                    let super_index = -1;
-                    if((super_index = node.find('SUPER')) > -1){
-                        node.splice(super_index, slot_node.nodes());
-                    }
-                    return this.replace(slot_index, node);
-                }
-            }
-        }
-        if(nodes.length > 0){
-            nodes.forEach(e=> e.accept(node));
-        }
-    }
 }
 
 class Interpreter{
@@ -244,6 +222,7 @@ class Interpreter{
     }
 
     eat(type){
+        console.log(`curr token => {type: ${this.curr_token.type}, value: ${this.curr_token.value}}`);
         if(type == this.curr_token.type){
             this.curr_token = this.lexer.getNextToken();
         }
@@ -259,51 +238,105 @@ class Interpreter{
         return markup;
     }
 
-    for(){
+    end(){
         let token = this.curr_token;
-        let slot = new NewNode(token);
-        this.eat(token.type);
-        let markup = this.markup();
-        slot.push(markup);
-        token = this.curr_token;
         let end = new NewNode(token);
-        slot.push(end);
         this.eat(token.type);
-        return slot;
-    }
 
-    super(){
-        let token = this.curr_token;
-        let node = new NewNode(token);
-        this.eat(token.type);
-        return node;
-    }
-
-    block(){
-        let token = this.curr_token;
-        let block = new NewNode(token);
-        this.eat(token.type);
         token = this.curr_token;
-        while(token.type != 'C_BLOCK'){
+        let close = this.close();
+        end.push(close);
+        return end;
+    }
+
+    close(){
+        let token = this.curr_token;
+        let close = new NewNode(token);
+        this.eat(token.type);
+        return close;
+    }
+
+    expr(){
+        let token = this.curr_token;
+        let expr = new NewNode(token);
+        this.eat(token.type);
+        return expr;
+    }
+
+    eval_expr(){
+        let token = this.curr_token;
+        let eval_cond = new NewNode(token);
+        this.eat(token.type);
+
+        let eval_expr = this.expr();
+        eval_cond.push(eval_expr);
+        return eval_cond;
+    }
+
+    prop_expr(){
+        let token = this.curr_token;
+        let prop_eval = new NewNode(token);
+        this.eat(token.type);
+
+        token = this.curr_token;
+        let prop_expr = this.expr();
+        prop_eval.push(prop_expr);
+        return prop_eval;
+    }
+
+    for_loop(){
+        let token = this.curr_token;
+        let for_loop = new NewNode(token);
+        this.eat(token.type);
+
+        let for_expr = this.for_expr();
+        for_loop.push(for_expr);
+        
+        token = this.curr_token;
+        let for_body = this.for_body(for_loop);
+        return for_body;
+    }
+
+    for_expr(){
+        let token = this.curr_token;
+        let for_exp = new NewNode(token);
+        this.eat(token.type);
+        return for_exp;
+    }
+
+    for_body(target){
+        let token = this.curr_token;
+        token = this.curr_token;
+        while(token.type != "O_END"){
             switch(token.type){
                 case 'MARKUP': {
                     let markup = this.markup();
-                    block.push(markup);
+                    target.push(markup);
                     break;
                 }
-                case 'SUPER': {
-                    let node = this.super();
-                    block.push(node);
+                case 'O_FOR': {
+                    let for_loop = this.for_loop();
+                    target.push(for_loop);
                     break;
                 }
-                case 'O_SLOT': {
-                    let slot = this.slot();
-                    block.push(slot);
+                case 'O_IF': {
+                    let if_expr = this.if_expr();
+                    target.push(if_expr);
+                    break;
+                }
+                case 'O_PROP': {
+                    let prop_expr = this.prop_expr();
+                    target.push(prop_expr)
+                    break;
+                }
+                case 'O_EVAL': {
+                    let eval_expr = this.eval_expr();
+                    target.push(eval_expr)
                     break;
                 }
                 case 'INCLUDE': {
                     let include = this.include();
-                    block.push(include);
+                    target.push(include);
                     break;
                 }
                 default: {
@@ -312,53 +345,110 @@ class Interpreter{
             }
             token = this.curr_token;
         }
-
-        let end = new NewNode(token);
-        block.push(end);
-        this.eat(token.type);
-        return block;
+        //@end reached
+        let end = this.end();
+        target.push(end);
+        return target;
     }
 
-    extend(){
+    if_expr(){        
         let token = this.curr_token;
-        let extend = new NewNode(token);
+        let if_expr = new NewNode(token);
         this.eat(token.type);
+
         token = this.curr_token;
-        while(token.type != 'C_EXTEND'){
+        let expr = this.expr();
+        if_expr.push(expr);
+
+        token = this.curr_token;
+        let if_body = this.if_body(if_expr);
+        return if_body;
+    }
+
+    if_body(target){
+        let token = this.curr_token;
+        token = this.curr_token;
+        while(token.type != "O_END"){
             switch(token.type){
-                case 'O_BLOCK': {
-                    let block = this.block();
-                    extend.push(block);
+                case 'MARKUP': {
+                    let markup = this.markup();
+                    target.push(markup);
+                    break;
+                }
+                case 'O_FOR': {
+                    let for_loop = this.for_loop();
+                    target.push(for_loop);
+                    break;
+                }
+                case 'O_IF': {
+                    let if_expr = this.if_expr();
+                    target.push(if_expr);
+                    break;
+                }
+                case 'O_ELIF': {
+                    let elif_expr = this.elif_expr();
+                    target.push(elif_expr);
+                    break;
+                }
+                case 'O_ELSE': {
+                    let else_expr = this.else_expr();
+                    target.push(else_expr);
+                    break;
+                }
+                case 'O_EVAL': {
+                    let eval_expr = this.eval_expr();
+                    target.push(eval_expr);
+                    break;
+                }
+                case 'O_PROP': {
+                    let prop_expr = this.prop_expr();
+                    target.push(prop_expr)
+                    break;
+                }
+                case 'INCLUDE': {
+                    let include = this.include();
+                    target.push(include);
                     break;
                 }
                 default: {
-                    throw Error(`${token.type} - unexpected token encountered in @extend section`);
+                    throw Error(`${token.type} - unexpected token encountered`);
                 }
             }
             token = this.curr_token;
         }
+        //@end reached
+        let end = this.end()
+        target.push(end);
+        return target;
+    }
 
-        let end = new NewNode(token);
-        extend.push(end);
+    elif_expr(){
+        let token = this.curr_token;
+        let else_exp = new NewNode(token);
         this.eat(token.type);
 
-        //expand the parent template
-        let source = extend.token().value;
-        let template = this.loadTemplate(source);
-        let parser = new Interpreter(new Lexer(template));
-        let parent = parser.build();
-        //using each @block, visit the parent and replace matching @slot 
-        let block = null;
-        while((block = extend.pluck('O_BLOCK')) != null){
-            parent.accept(block);
-        }        
-        return parent;
+        token = this.curr_token;
+        let expr = this.expr();
+        else_exp.push(expr);
+        return else_exp;
+    }
+
+    else_expr(){
+        let token = this.curr_token;
+        let else_exp = new NewNode(token);
+        this.eat(token.type);
+
+        token = this.curr_token;
+        let close = this.close();
+        else_exp.push(close);
+        return else_exp;
     }
 
     include(){
         let token = this.curr_token;
         let include = new NewNode(token);
         this.eat(token.type);
+
         let source = token.value;
         let template = this.loadTemplate(source);
         let parser = new Interpreter(new Lexer(template));
@@ -392,18 +482,25 @@ class Interpreter{
     build(){
         while(this.curr_token != null){
             let token = this.curr_token;
-            if(token.type == 'O_EXTEND'){                
-                let extend = this.extend();
-                this.head.push(extend);
-                break;
+            if(token.type == 'O_FOR'){                
+                let for_loop = this.for_loop();
+                this.head.push(for_loop);
             }
             else if(token.type == 'MARKUP'){
                 let markup = this.markup();
                 this.head.push(markup);
             }
-            else if(token.type == 'O_SLOT'){
-                let slot = this.slot();
-                this.head.push(slot);
+            else if(token.type == 'O_IF'){
+                let if_expr = this.if_expr();
+                this.head.push(if_expr);
+            }
+            else if(token.type == 'O_EVAL') {
+                let eval_expr = this.eval_expr();
+                this.head.push(eval_expr);
+            }
+            else if(token.type == 'O_PROP') {
+                let prop_expr = this.prop_expr();
+                this.head.push(prop_expr);
             }
             else if(token.type == 'INCLUDE'){
                 let include = this.include();
@@ -417,8 +514,128 @@ class Interpreter{
     }
 }
 
+class Renderer{
+
+    constructor(ast){
+        this.ast = ast;
+    }
+
+    merge(context){
+        
+    }
+}
+
+let forParams = function (expr) {
+    var regex_2 = /(\w+?)\s*?in\s*?(\w+?)$/g;
+    var regex_3 = /(\w+?)\s*?,?\s*?(\w+?)\s*?in\s*?(\w+?)$/g;
+    var match;
+    if (!expr.includes(",")) {
+        if ((match = regex_2.exec(expr)) != null) {
+            return { cursor: match[1], elements: match[2] , key: undefined};
+        } else {
+            throw Error('seems like \'' + expr + '\' is an invalid @for expression');
+        }
+    } else {
+        if ((match = regex_3.exec(expr)) != null) {
+            return { cursor: match[1], elements: match[3], key: match[2] };
+        } else {
+            throw Error('seems like \'' + expr + '\' is an invalid @for expression');
+        }
+    }
+}
+
+let Tmpl = {};
+
+Tmpl.objProp = function (path, obj) {
+    return path.split(/\.|\[['"]?(.+?)["']?\]/).filter(function (val) {
+        return val;
+    }).reduce(function (prev, curr) {
+        return prev ? prev[curr] : null;
+    }, obj);
+}
+
+Tmpl.setProp = function (expr) {
+    return function (ctx) {
+        var parts = expr.split("=");
+        var prop = parts[0].trim();
+        ctx[prop] = eval(parts[1].trim());
+        return prop;
+    }
+}
+
+Tmpl.resProp = function (expr) {
+    return function (ctx) {
+        return this.objProp(expr, ctx);
+    }.bind(this);
+}
+
+Tmpl.resExpr = function (expr) {
+    return function (ctx) {
+        //padd with a space at the end for regex to match
+        var exec = expr.concat(' ').replace(/(\w+(\.|\[).*?)\s/g, function (m, p) {
+            return this.objProp(p, ctx);
+        }.bind(this));
+        if (exec.search(/([a-zA-Z_]+?)\s/g) > -1) {
+            exec = expr.concat(' ').replace(/([a-zA-Z_]+?)\s/g, function (m, p) {
+                var e = this.objProp(p, ctx);
+                return this.isNumeric(e) ? e : this.isString(e) ? "'" + e + "'" : e;
+            }.bind(this));
+        }
+        Logger.log('executable expression -> ' + exec);
+        return eval(exec);
+    }.bind(this);
+}
+
+Tmpl.isNumeric = function (n) {
+    return !isNaN(parseFloat(n)) && isFinite(n);
+}
+
+Tmpl.isNumber = function (value) {
+    return typeof value === 'number' && isFinite(value);
+}
+
+Tmpl.isString = function (value) {
+    return typeof value === 'string' || value instanceof String;
+}
+
+Tmpl.isObject = function (value) {
+    return value && typeof value === 'object' && value.constructor === Object;
+}
+
+Tmpl.isArray = function (value) {
+    return value && Array.isArray(value);
+}
+
+Tmpl.isFunction = function (value) {
+    return typeof value === 'function';
+}
+
+Tmpl.isRegExp = function (value) {
+    return value && typeof value === 'object' && value.constructor === RegExp;
+}
+
+Tmpl.isError = function (value) {
+    return value instanceof Error && typeof value.message !== 'undefined';
+}
+
+Tmpl.isDate = function (value) {
+    return value instanceof Date;
+}
+
+Tmpl.mergeArrays = function (a, b) {
+    //in-place merging instead of a.concat(b) which creates new array
+    if (a.length > b.length) {
+        a.push.apply(a, b);
+        return a;
+    }
+    else {
+        b.unshift.apply(b, a);
+        return b;
+    }
+}
+
 //******* testing **********//
-var simple_html = [
+var complex_html = [
 "<div id=\"app\">",
     "<h3>sports</h3>",
     "<ul id=\"listing\">",
@@ -453,19 +670,80 @@ var simple_html = [
 "</div>"
 ].join("");
 
+let if_html = [
+    "<div>",
+    "@if{ x > 2 } @{x} greater @elif{x=2} equal @else{} less @end{}",
+    "@eval{x*10}",
+    "</div>"
+].join("");
 
-let lexer = new Lexer(simple_html);
-let token = null;
-while((token = lexer.getNextToken()) != null){
-    console.log(token);
-}
+let for_html = [
+    "<div>",
+    "@for{ item, y in list} @{y} - @{item.x} awesome @end{}",
+    "@eval{x*10}",
+    "</div>"
+].join("");
 
-// let parser = new Interpreter(new Lexer(colors_html));
-// let colors = parser.build();
-// colors.visit({
-//     accept: function(node){
-//         if(node.token().type == 'MARKUP'){
-//             console.log(node.token().value);
-//         }
-//     }
-// });
+// let lexer = new Lexer(complex_html);
+// let token = null;
+// while((token = lexer.getNextToken()) != null){
+//     console.log(token);
+// }
+
+let parser = new Interpreter(new Lexer(if_html));
+let simple = parser.build();
+//console.log(simple.print());
+simple.visit({
+    context: {list: [{x:2},{x:4},{x:6},{x:8},{x:10}]},
+    accept: function(node){
+        let token = node.token();
+        switch(token.type){
+            case 'O_IF': {
+                console.log(token.value);
+                break;
+            }
+            case 'O_FOR': {
+                let children = node.nodes();
+                let params = forParams(children[0].token().value.replace(/\{(.*)}/, "$1"));
+                let cursor = params.cursor, elements = this.context[params.elements], key = params.key;
+                var result = [];
+                for (var index in elements) {
+                    var ctx = {};
+                    ctx[cursor] = elements[index];
+                    if (key) ctx[key] = index;
+                    
+                    for(let i = 1; i < children.length; i++){
+                        let child = children[i];
+                        switch(child.token().type){
+                            case 'O_PROP': {
+                                let res = Tmpl.resProp(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"));
+                                console.log(res(ctx));
+                                break;
+                            }
+                            case 'O_EVAL': {
+                                let res = Tmpl.resExpr(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"));
+                                console.log(res(ctx));
+                                break;
+                            }
+                            case 'MARKUP': {
+                                console.log(child.token().value);
+                                break;
+                            }
+                            default: {
+                                break;
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+            case 'MARKUP': {
+                console.log(token.value);
+                break;
+            }
+            default: {
+               break;
+            }
+        }
+    }
+});

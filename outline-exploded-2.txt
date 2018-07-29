@@ -1,56 +1,89 @@
-
 null: Token {type: "MARKUP", value: "<div id="app"><h3>sports</h3><ul id="listing">"}
-null: Token {type: "MARKUP", value: "@for{sport, index in sports}"}
+null: Token {type: "O_FOR", value: "@for"}
+null: Token {type: "FOR_EXPR", value: "{sport, index in sports}"}
 null: Token {type: "MARKUP", value: "<li><span>"}
-null: Token {type: "MARKUP", value: "@eval{index + 1}"}
+null: Token {type: "O_EVAL", value: "@eval"}
+null: Token {type: "EXPR", value: "{index + 1}"}
 null: Token {type: "MARKUP", value: "</span> - "}
-null: Token {type: "MARKUP", value: "@{sport.name}"}
+null: Token {type: "O_PROP", value: "@"}
+null: Token {type: "EXPR", value: "{sport.name}"}
 null: Token {type: "MARKUP", value: "</li>"}
-null: Token {type: "MARKUP", value: "@end{}"}
+null: 
+null: Token {type: "O_END", value: "@end"}
+null: Token {type: "O_CLOSE", value: "{}"}
 null: Token {type: "MARKUP", value: "</ul><div>"}
-null: Token {type: "MARKUP", value: "@if{sports[0].rank == 2}"}
+null: Token {type: "O_IF", value: "@if"}
+null: Token {type: "EXPR", value: "{sports[0].rank == 2}"}
 null: Token {type: "MARKUP", value: "<p style="background-color:green;">"}
-null: Token {type: "MARKUP", value: "@{sports[0].name}"}
+null: Token {type: "O_PROP", value: "@"}
+null: Token {type: "EXPR", value: "{sports[0].name}"}
 null: Token {type: "MARKUP", value: "</p>"}
-null: Token {type: "MARKUP", value: "@else{}"}
+null: Token {type: "O_ELSE", value: "@else"}
+null: Token {type: "O_CLOSE", value: "{}"}
 null: Token {type: "MARKUP", value: "<p style="background-color:red;">"}
-null: Token {type: "MARKUP", value: "@{sports[0].name}"}
+null: Token {type: "O_PROP", value: "@"}
+null: Token {type: "EXPR", value: "{sports[0].name}"}
 null: Token {type: "MARKUP", value: "</p>"}
-null: Token {type: "MARKUP", value: "@end{}"}
+null: Token {type: "O_END", value: "@end"}
+null: Token {type: "O_CLOSE", value: "{}"}
 null: Token {type: "MARKUP", value: "</div><ul id="listing-1">"}
-null: Token {type: "MARKUP", value: "@for{sport, index in sports}"}
+null: Token {type: "O_FOR", value: "@for"}
+null: Token {type: "FOR_EXPR", value: "{sport, index in sports}"}
 null: Token {type: "MARKUP", value: " "}
-null: Token {type: "MARKUP", value: "@if{(index % 2 ) > 0}"}
+null: Token {type: "O_IF", value: "@if"}
+null: Token {type: "EXPR", value: "{(index % 2 ) > 0}"}
 null: Token {type: "MARKUP", value: "<li style="background-color:yellow;"><span>"}
-null: Token {type: "MARKUP", value: "@eval{index + 1}"}
+null: Token {type: "O_EVAL", value: "@eval"}
+null: Token {type: "EXPR", value: "{index + 1}"}
 null: Token {type: "MARKUP", value: "</span> - "}
-null: Token {type: "MARKUP", value: "@{sport.name}"}
+null: Token {type: "O_PROP", value: "@"}
+null: Token {type: "EXPR", value: "{sport.name}"}
 null: Token {type: "MARKUP", value: "</li>"}
-null: Token {type: "MARKUP", value: "@else{}"}
+null: Token {type: "O_ELSE", value: "@else"}
+null: Token {type: "O_CLOSE", value: "{}"}
 null: Token {type: "MARKUP", value: "<li style="background-color:blue;"><span>"}
-null: Token {type: "MARKUP", value: "@eval{index + 1}"}
+null: Token {type: "O_EVAL", value: "@eval"}
+null: Token {type: "EXPR", value: "{index + 1}"}
 null: Token {type: "MARKUP", value: "</span> - "}
-null: Token {type: "MARKUP", value: "@{sport.name}"}
+null: Token {type: "O_PROP", value: "@"}
+null: Token {type: "EXPR", value: "{sport.name}"}
 null: Token {type: "MARKUP", value: "</li>"}
-null: Token {type: "MARKUP", value: "@end{}"}
+null: Token {type: "O_END", value: "@end"}
+null: Token {type: "O_CLOSE", value: "{}"}
 null: Token {type: "MARKUP", value: " "}
-null: Token {type: "MARKUP", value: "@end{}"}
+null: Token {type: "O_END", value: "@end"}
+null: Token {type: "O_CLOSE", value: "{}"}
 null: Token {type: "MARKUP", value: "</ul><ul id="listing-3">"}
-null: Token {type: "MARKUP", value: "@for{sport, index in sports}"}
+null: Token {type: "O_FOR", value: "@for"}
+null: Token {type: "FOR_EXPR", value: "{sport, index in sports}"}
 null: Token {type: "MARKUP", value: " "}
-null: Token {type: "MARKUP", value: "@if{(index % 3 ) > 0}"}
+null: Token {type: "O_IF", value: "@if"}
+null: Token {type: "EXPR", value: "{(index % 3 ) > 0}"}
 null: Token {type: "MARKUP", value: "<li style="background-color:orange;"><span>"}
-null: Token {type: "MARKUP", value: "@eval{index + 1}"}
+null: Token {type: "O_EVAL", value: "@eval"}
+null: Token {type: "EXPR", value: "{index + 1}"}
 null: Token {type: "MARKUP", value: "</span> - "}
-null: Token {type: "MARKUP", value: "@{sport.name}"}
+null: Token {type: "O_PROP", value: "@"}
+null: Token {type: "EXPR", value: "{sport.name}"}
 null: Token {type: "MARKUP", value: "</li>"}
-null: Token {type: "MARKUP", value: "@else{}"}
+null: Token {type: "O_ELSE", value: "@else"}
+null: Token {type: "O_CLOSE", value: "{}"}
 null: Token {type: "MARKUP", value: "<li style="background-color:indigo;"><span>"}
-null: Token {type: "MARKUP", value: "@eval{index + 1}"}
+null: Token {type: "O_EVAL", value: "@eval"}
+null: Token {type: "EXPR", value: "{index + 1}"}
 null: Token {type: "MARKUP", value: "</span> - "}
-null: Token {type: "MARKUP", value: "@{sport.name}"}
+null: Token {type: "O_PROP", value: "@"}
+null: Token {type: "EXPR", value: "{sport.name}"}
 null: Token {type: "MARKUP", value: "</li>"}
-null: Token {type: "MARKUP", value: "@end{}"}
+null: Token {type: "O_END", value: "@end"}
+null: Token {type: "O_CLOSE", value: "{}"}
 null: Token {type: "MARKUP", value: " "}
-null: Token {type: "MARKUP", value: "@end{}"}
+null: Token {type: "O_END", value: "@end"}
+null: Token {type: "O_CLOSE", value: "{}"}
 null: Token {type: "MARKUP", value: "</ul></div>"}
+curr token => {type: O_FOR, value: @for}
+curr token => {type: FOR_EXPR, value: {sport, index in sports}}
+curr token => {type: MARKUP, value: <li><span>}
+curr token => {type: O_EVAL, value: @eval}
+curr token => {type: EXPR, value: {index + 1}}
+curr token => {type: MARKUP, value: </span> - }

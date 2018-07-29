@@ -31,11 +31,14 @@ o_else		: [@else o_close]
 o_end		: [@end o_close]
 o_close		: {}
 o_eval		: @eval
-property	: @{path}
+property	: @{expr}
 iterable	: (property|expr)
 index		: \w+
 key		: \w+
-path		: .+
 expr		: .+
 	
+for_expr regex 	=> /\{.+,?.+in.+\}/
+o_close regex	=> /\{\s?}/
+expr regex	=> /\{.+?}/
+
 
