@@ -140,6 +140,9 @@ class Lexer{
                 case '@eval': {
                     return new Token('O_EVAL', input);
                 }
+                case '@set': {
+                    return new Token('O_SET', input);
+                }
                 case '@if': {
                     return new Token('O_IF', input);
                 }
@@ -263,6 +266,16 @@ class Interpreter{
         return expr;
     }
 
+    set_expr(){
+        let token = this.curr_token;
+        let set_prop = new NewNode(token);
+        this.eat(token.type);
+
+        let set_expr = this.expr();
+        set_prop.push(set_expr);
+        return set_prop;
+    }
+
     eval_expr(){
         let token = this.curr_token;
         let eval_cond = new NewNode(token);
@@ -320,8 +333,8 @@ class Interpreter{
                     break;
                 }
                 case 'O_IF': {
-                    let if_expr = this.if_expr();
-                    target.push(if_expr);
+                    let if_block = this.if_block();
+                    target.push(if_block);
                     break;
                 }
                 case 'O_PROP': {
@@ -332,6 +345,11 @@ class Interpreter{
                 case 'O_EVAL': {
                     let eval_expr = this.eval_expr();
                     target.push(eval_expr)
+                    break;
+                }
+                case 'O_SET': {
+                    let set_expr = this.set_expr();
+                    target.push(set_expr)
                     break;
                 }
                 case 'INCLUDE': {
@@ -351,24 +369,73 @@ class Interpreter{
         return target;
     }
 
-    if_expr(){        
+    if_block(){
         let token = this.curr_token;
-        let if_expr = new NewNode(token);
+        let if_block = new NewNode(new Token('IF_BLOCK', ''));
+        this.if_expr(if_block);
+        
+        token = this.curr_token
+        while(token.type != 'O_END'){
+            token = this.curr_token;
+            if(token.type == "O_ELIF"){
+                this.elif_expr(if_block);
+            }
+
+            token = this.curr_token;
+            if(token.type == "O_ELSE"){
+                this.else_expr(if_block);
+            }
+        }
+
+        //@end reached
+        let end = this.end()
+        if_block.push(end);
+        return if_block;
+    }
+
+    if_expr(if_block){
+        let token = this.curr_token;
+        let if_body = new NewNode(token);
+        this.eat(token.type);
+        
+        token = this.curr_token;
+        let if_expr = this.expr()
+        if_body.push(if_expr);
+
+        this.block_body(if_body);
+        if_block.push(if_body);
+    }
+
+    elif_expr(if_block){
+        let token = this.curr_token;
+        let elif_body = new NewNode(token);
         this.eat(token.type);
 
         token = this.curr_token;
-        let expr = this.expr();
-        if_expr.push(expr);
+        let elif_expr = this.expr();
+        elif_body.push(elif_expr);
 
-        token = this.curr_token;
-        let if_body = this.if_body(if_expr);
-        return if_body;
+        this.block_body(elif_body);
+        if_block.push(elif_body);
     }
 
-    if_body(target){
+    else_expr(if_block){
+        let token = this.curr_token;
+        let else_body = new NewNode(token);
+        this.eat(token.type);
+        
+        token = this.curr_token;
+        let close = this.close();
+        else_body.push(close);
+
+        this.block_body(else_body);
+        if_block.push(else_body);        
+    }
+
+    block_body(target){
         let token = this.curr_token;
         token = this.curr_token;
-        while(token.type != "O_END"){
+        while(!["O_END",'O_ELIF','O_ELSE'].includes(token.type)){
             switch(token.type){
                 case 'MARKUP': {
                     let markup = this.markup();
@@ -381,18 +448,13 @@ class Interpreter{
                     break;
                 }
                 case 'O_IF': {
-                    let if_expr = this.if_expr();
-                    target.push(if_expr);
+                    let if_block = this.if_block();
+                    target.push(if_block);
                     break;
                 }
-                case 'O_ELIF': {
-                    let elif_expr = this.elif_expr();
-                    target.push(elif_expr);
-                    break;
-                }
-                case 'O_ELSE': {
-                    let else_expr = this.else_expr();
-                    target.push(else_expr);
+                case 'O_PROP': {
+                    let prop_expr = this.prop_expr();
+                    target.push(prop_expr)
                     break;
                 }
                 case 'O_EVAL': {
@@ -400,9 +462,9 @@ class Interpreter{
                     target.push(eval_expr);
                     break;
                 }
-                case 'O_PROP': {
-                    let prop_expr = this.prop_expr();
-                    target.push(prop_expr)
+                case 'O_SET': {
+                    let set_expr = this.set_expr();
+                    target.push(set_expr)
                     break;
                 }
                 case 'INCLUDE': {
@@ -416,32 +478,6 @@ class Interpreter{
             }
             token = this.curr_token;
         }
-        //@end reached
-        let end = this.end()
-        target.push(end);
-        return target;
-    }
-
-    elif_expr(){
-        let token = this.curr_token;
-        let else_exp = new NewNode(token);
-        this.eat(token.type);
-
-        token = this.curr_token;
-        let expr = this.expr();
-        else_exp.push(expr);
-        return else_exp;
-    }
-
-    else_expr(){
-        let token = this.curr_token;
-        let else_exp = new NewNode(token);
-        this.eat(token.type);
-
-        token = this.curr_token;
-        let close = this.close();
-        else_exp.push(close);
-        return else_exp;
     }
 
     include(){
@@ -491,16 +527,20 @@ class Interpreter{
                 this.head.push(markup);
             }
             else if(token.type == 'O_IF'){
-                let if_expr = this.if_expr();
-                this.head.push(if_expr);
+                let if_block = this.if_block();
+                this.head.push(if_block);
+            }
+            else if(token.type == 'O_PROP') {
+                let prop_expr = this.prop_expr();
+                this.head.push(prop_expr);
             }
             else if(token.type == 'O_EVAL') {
                 let eval_expr = this.eval_expr();
                 this.head.push(eval_expr);
             }
-            else if(token.type == 'O_PROP') {
-                let prop_expr = this.prop_expr();
-                this.head.push(prop_expr);
+            else if(token.type == 'O_SET') {
+                let set_expr = this.set_expr();
+                this.head.push(set_expr);
             }
             else if(token.type == 'INCLUDE'){
                 let include = this.include();
@@ -511,36 +551,6 @@ class Interpreter{
             }
         }
         return this.head;
-    }
-}
-
-class Renderer{
-
-    constructor(ast){
-        this.ast = ast;
-    }
-
-    merge(context){
-        
-    }
-}
-
-let forParams = function (expr) {
-    var regex_2 = /(\w+?)\s*?in\s*?(\w+?)$/g;
-    var regex_3 = /(\w+?)\s*?,?\s*?(\w+?)\s*?in\s*?(\w+?)$/g;
-    var match;
-    if (!expr.includes(",")) {
-        if ((match = regex_2.exec(expr)) != null) {
-            return { cursor: match[1], elements: match[2] , key: undefined};
-        } else {
-            throw Error('seems like \'' + expr + '\' is an invalid @for expression');
-        }
-    } else {
-        if ((match = regex_3.exec(expr)) != null) {
-            return { cursor: match[1], elements: match[3], key: match[2] };
-        } else {
-            throw Error('seems like \'' + expr + '\' is an invalid @for expression');
-        }
     }
 }
 
@@ -634,6 +644,29 @@ Tmpl.mergeArrays = function (a, b) {
     }
 }
 
+Tmpl.forParams = function (expr) {
+    var regex_2 = /(\w+?)\s*?in\s*?(\w+?)$/g;
+    var regex_3 = /(\w+?)\s*?,?\s*?(\w+?)\s*?in\s*?(\w+?)$/g;
+    var match;
+    if (!expr.includes(",")) {
+        if ((match = regex_2.exec(expr)) != null) {
+            return { cursor: match[1], elements: match[2] , key: undefined};
+        } else {
+            throw Error('seems like \'' + expr + '\' is an invalid @for expression');
+        }
+    } else {
+        if ((match = regex_3.exec(expr)) != null) {
+            return { cursor: match[1], elements: match[3], key: match[2] };
+        } else {
+            throw Error('seems like \'' + expr + '\' is an invalid @for expression');
+        }
+    }
+}
+
+Tmpl.walkTree = function(node){
+    
+}
+
 //******* testing **********//
 var complex_html = [
 "<div id=\"app\">",
@@ -692,19 +725,61 @@ let for_html = [
 
 let parser = new Interpreter(new Lexer(if_html));
 let simple = parser.build();
-//console.log(simple.print());
+console.log(simple.print());
 simple.visit({
     context: {list: [{x:2},{x:4},{x:6},{x:8},{x:10}]},
     accept: function(node){
         let token = node.token();
         switch(token.type){
-            case 'O_IF': {
-                console.log(token.value);
+            case 'IF_BLOCK': {
+                function render(child){
+                    switch(child.token().type){
+                        case 'O_PROP': {
+                            let res = Tmpl.resProp(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"));
+                            console.log(res(this.context));
+                            break;
+                        }
+                        case 'O_EVAL': {
+                            let res = Tmpl.resExpr(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"));
+                            console.log(res(this.context));
+                            break;
+                        }
+                        case 'O_SET': {
+                            console.log(Tmpl.setProp(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"), ctx));
+                            break;
+                        }
+                        case 'MARKUP': {
+                            console.log(child.token().value);
+                            break;
+                        }
+                        default: {
+                            break;
+                        }
+                    }
+                }
+
+                let children = node.nodes();
+                let rendered = false;
+                for(var i = 0; i < children.length - 1; i++){
+                    let child = children[i];
+                    let isTrue = Tmpl.resExpr(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"));
+                    if(isTrue){
+                        render(child);
+                        rendred = true;
+                        break;
+                    }
+                    if(child.token().type == 'O_ELSE' && !rendred){
+                        render(child);
+                        rendred = true;
+                        break;
+                    }
+                }
+
                 break;
             }
             case 'O_FOR': {
                 let children = node.nodes();
-                let params = forParams(children[0].token().value.replace(/\{(.*)}/, "$1"));
+                let params = Tmpl.forParams(children[0].token().value.replace(/\{(.*)}/, "$1"));
                 let cursor = params.cursor, elements = this.context[params.elements], key = params.key;
                 var result = [];
                 for (var index in elements) {
@@ -725,9 +800,16 @@ simple.visit({
                                 console.log(res(ctx));
                                 break;
                             }
+                            case 'O_SET': {
+                                console.log(Tmpl.setProp(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"), ctx));
+                                break;
+                            }
                             case 'MARKUP': {
                                 console.log(child.token().value);
                                 break;
+                            }
+                            case 'IF_BLOCK': {
+
                             }
                             default: {
                                 break;
