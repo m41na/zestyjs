@@ -64,15 +64,22 @@
         ;
         (function(dom, template, model) {
             var markup = document.querySelector(template).innerHTML;
-            // var rendered = Tmpl.expandTemplate(0, Tmpl.splitTemplate(he.decode(markup))(model).reduce(function(acc, curr) {
-            //     return acc.concat(curr.value);
-            // }, ""));
-            var splitup = Tmpl.splitTemplate(he.decode(markup));
-            var expanded = Tmpl.expandTemplate(0, splitup)(model);
-            var rendered = expanded.reduce(function(acc, curr) {
-                return acc.concat(curr.value || "");
-            }, "");
-            console.log(rendered);
+
+            let parser = new Interpreter(new Lexer(he.decode(markup)));
+            let colors = parser.build();
+            let rendered = [];
+            colors.visit({
+                accept: function(node){
+                    if(node.token().type == 'MARKUP'){
+                        rendered.push(node.token().value);
+                    }
+                }
+            });
+            let expanded = rendered.join("");
+
+            // let templr = new Templr(he.decode(markup));
+            // let expanded = templr.render(model);
+            // console.log(expanded);
 
             //render content
             var range = document.createRange();
@@ -80,10 +87,10 @@
             //make 'target' the context node
             range.selectNode(target);
             //create node from text
-            var frag = range.createContextualFragment(rendered);
+            var frag = range.createContextualFragment(expanded);
             //replace target
             target.parentNode.replaceChild(frag, target);
-        })("#app", "#main", model);
+        })("#app", "#listing", model);
     </script>
 </body>
 

@@ -5,7 +5,7 @@ try {
     console.log('trouble with require - ' + error);
 }
 
-let Logger = function (flag) {
+let logger = function (flag) {
     var enabled = flag;
     return {
         log: function (str) {
@@ -554,193 +554,369 @@ class Interpreter{
     }
 }
 
-let Tmpl = {};
+class Utils{
 
-Tmpl.objProp = function (path, obj) {
-    return path.split(/\.|\[['"]?(.+?)["']?\]/).filter(function (val) {
-        return val;
-    }).reduce(function (prev, curr) {
-        return prev ? prev[curr] : null;
-    }, obj);
-}
-
-Tmpl.setProp = function (expr) {
-    return function (ctx) {
-        var parts = expr.split("=");
-        var prop = parts[0].trim();
-        ctx[prop] = eval(parts[1].trim());
-        return prop;
+    constructor(){
+        //nothing
     }
-}
 
-Tmpl.resProp = function (expr) {
-    return function (ctx) {
-        return this.objProp(expr, ctx);
-    }.bind(this);
-}
+    objProp (path, obj) {
+        return path.split(/\.|\[['"]?(.+?)["']?\]/).filter(function (val) {
+            return val;
+        }).reduce(function (prev, curr) {
+            return prev ? prev[curr] : null;
+        }, obj);
+    }
 
-Tmpl.resExpr = function (expr) {
-    return function (ctx) {
-        //padd with a space at the end for regex to match
-        var exec = expr.concat(' ').replace(/(\w+(\.|\[).*?)\s/g, function (m, p) {
-            return this.objProp(p, ctx);
-        }.bind(this));
-        if (exec.search(/([a-zA-Z_]+?)\s/g) > -1) {
-            exec = expr.concat(' ').replace(/([a-zA-Z_]+?)\s/g, function (m, p) {
-                var e = this.objProp(p, ctx);
-                return this.isNumeric(e) ? e : this.isString(e) ? "'" + e + "'" : e;
+    setProp (expr) {
+        return function (ctx) {
+            var parts = expr.split("=");
+            var prop = parts[0].trim();
+            ctx[prop] = eval(parts[1].trim());
+            return prop;
+        }
+    }
+
+    resProp (expr) {
+        return function (ctx) {
+            return this.objProp(expr, ctx);
+        }.bind(this);
+    }
+
+    resExpr (expr) {
+        return function (ctx) {
+            //padd with a space at the end for regex to match
+            var exec = expr.concat(' ').replace(/(\w+(\.|\[).*?)\s/g, function (m, p) {
+                return this.objProp(p, ctx);
             }.bind(this));
+            if (exec.search(/([a-zA-Z_]+?)\s/g) > -1) {
+                exec = expr.concat(' ').replace(/([a-zA-Z_]+?)\s/g, function (m, p) {
+                    var e = this.objProp(p, ctx);
+                    return this.isNumeric(e) ? e : this.isString(e) ? "'" + e + "'" : e;
+                }.bind(this));
+            }
+            logger.log('executable expression -> ' + exec);
+            return eval(exec);
+        }.bind(this);
+    }
+
+    isNumeric (n) {
+        return !isNaN(parseFloat(n)) && isFinite(n);
+    }
+
+    isNumber (value) {
+        return typeof value === 'number' && isFinite(value);
+    }
+
+    isString (value) {
+        return typeof value === 'string' || value instanceof String;
+    }
+
+    isObject (value) {
+        return value && typeof value === 'object' && value.constructor === Object;
+    }
+
+    isArray (value) {
+        return value && Array.isArray(value);
+    }
+
+    isFunction (value) {
+        return typeof value === 'function';
+    }
+
+    isRegExp (value) {
+        return value && typeof value === 'object' && value.constructor === RegExp;
+    }
+
+    isError (value) {
+        return value instanceof Error && typeof value.message !== 'undefined';
+    }
+
+    isDate (value) {
+        return value instanceof Date;
+    }
+
+    mergeArrays (a, b) {
+        //in-place merging instead of a.concat(b) which creates new array
+        if (a.length > b.length) {
+            a.push.apply(a, b);
+            return a;
         }
-        Logger.log('executable expression -> ' + exec);
-        return eval(exec);
-    }.bind(this);
-}
-
-Tmpl.isNumeric = function (n) {
-    return !isNaN(parseFloat(n)) && isFinite(n);
-}
-
-Tmpl.isNumber = function (value) {
-    return typeof value === 'number' && isFinite(value);
-}
-
-Tmpl.isString = function (value) {
-    return typeof value === 'string' || value instanceof String;
-}
-
-Tmpl.isObject = function (value) {
-    return value && typeof value === 'object' && value.constructor === Object;
-}
-
-Tmpl.isArray = function (value) {
-    return value && Array.isArray(value);
-}
-
-Tmpl.isFunction = function (value) {
-    return typeof value === 'function';
-}
-
-Tmpl.isRegExp = function (value) {
-    return value && typeof value === 'object' && value.constructor === RegExp;
-}
-
-Tmpl.isError = function (value) {
-    return value instanceof Error && typeof value.message !== 'undefined';
-}
-
-Tmpl.isDate = function (value) {
-    return value instanceof Date;
-}
-
-Tmpl.mergeArrays = function (a, b) {
-    //in-place merging instead of a.concat(b) which creates new array
-    if (a.length > b.length) {
-        a.push.apply(a, b);
-        return a;
+        else {
+            b.unshift.apply(b, a);
+            return b;
+        }
     }
-    else {
-        b.unshift.apply(b, a);
-        return b;
-    }
-}
 
-Tmpl.forParams = function (expr) {
-    var regex_2 = /(\w+?)\s*?in\s*?(\w+?)$/g;
-    var regex_3 = /(\w+?)\s*?,?\s*?(\w+?)\s*?in\s*?(\w+?)$/g;
-    var match;
-    if (!expr.includes(",")) {
-        if ((match = regex_2.exec(expr)) != null) {
-            return { cursor: match[1], elements: match[2] , key: undefined};
+    forParams (expr) {
+        var regex_2 = /(\w+?)\s*?in\s*?(\w+?)$/g;
+        var regex_3 = /(\w+?)\s*?,?\s*?(\w+?)\s*?in\s*?(\w+?)$/g;
+        var match;
+        if (!expr.includes(",")) {
+            if ((match = regex_2.exec(expr)) != null) {
+                return { cursor: match[1], elements: match[2] , key: undefined};
+            } else {
+                throw Error('seems like \'' + expr + '\' is an invalid @for expression');
+            }
         } else {
-            throw Error('seems like \'' + expr + '\' is an invalid @for expression');
-        }
-    } else {
-        if ((match = regex_3.exec(expr)) != null) {
-            return { cursor: match[1], elements: match[3], key: match[2] };
-        } else {
-            throw Error('seems like \'' + expr + '\' is an invalid @for expression');
+            if ((match = regex_3.exec(expr)) != null) {
+                return { cursor: match[1], elements: match[3], key: match[2] };
+            } else {
+                throw Error('seems like \'' + expr + '\' is an invalid @for expression');
+            }
         }
     }
-}
 
-Tmpl.walkTree = function(start){
-    var head, tail;
-    var marked = [];
+    walkTree(start){
+        var head, tail;
+        var marked = [];
 
-    function init(root, depth){
-        head = {node: root, next: undefined, id: depth};
+        function init(root, depth){
+            head = {node: root, next: undefined, id: depth};
+            tail = head;
+
+            function walk(node, id){
+                let nodes = node.nodes();
+                if(nodes.length > 0){
+                    nodes.forEach(e=> {
+                        let next = {node: e, next: undefined, id: id};
+                        tail.next = next;
+                        tail = next;
+                        walk(e, id + 1);
+                    });
+                }
+                nodes = null;
+            }
+            walk(tail.node, depth + 1);
+        }
+
+        init(start, 0);
         tail = head;
-
-        function walk(node, id){
-            let nodes = node.nodes();
-            if(nodes.length > 0){
-                nodes.forEach(e=> {
-                    let next = {node: e, next: undefined, id: id};
-                    tail.next = next;
-                    tail = next;
-                    walk(e, id + 1);
-                });
-            }
-            nodes = null;
-        }
-        walk(tail.node, depth + 1);
-    }
-
-    init(start, 0);
-    tail = head;
-    return {
-        next: function(){
-            if(tail.next){
-                //console.log(tail.id + " - " + tail.node.token().type);
-                tail = tail.next;
-                return tail.node;
-            }
-            else{
-                head = null;
-                tail = null;
-                return null;
-            }
-        },
-        mark: function(pos){
-            if(pos){
-                marked.push(pos);
-            }
-            else{
-                marked.push(tail);
-            }
-        },
-        jump: function(pos){
-            if(pos){
-                tail = pos;
-            }
-            else{
-                if(marked.length > 0){
-                    tail = marked.pop();
+        return {
+            next: function(){
+                if(tail.next){
+                    //console.log(tail.id + " - " + tail.node.token().type);
+                    tail = tail.next;
+                    return tail.node;
                 }
                 else{
-                    throw Error('there is no marked node to jump to');
+                    head = null;
+                    tail = null;
+                    return null;
                 }
+            },
+            mark: function(pos){
+                if(pos){
+                    marked.push(pos);
+                }
+                else{
+                    marked.push(tail);
+                }
+            },
+            jump: function(pos){
+                if(pos){
+                    tail = pos;
+                }
+                else{
+                    if(marked.length > 0){
+                        tail = marked.pop();
+                    }
+                    else{
+                        throw Error('there is no marked node to jump to');
+                    }
+                }
+            },
+            siblings(){
+                let list = [];
+                let temp = tail, id = tail.id;
+                list.push(temp);
+                while(temp.next){
+                    temp = temp.next;
+                    if(temp.id == id){
+                        list.push(temp);
+                    }
+                    if(temp.id < id){
+                        break;
+                    }
+                }
+                return list;
+            },
+            reset: function(node){
+                init(node);
             }
-        },
-        siblings(){
-            let list = [];
-            let temp = tail, id = tail.id;
-            list.push(temp);
-            while(temp.next){
-                temp = temp.next;
-                if(temp.id == id){
-                    list.push(temp);
+        }
+    }
+
+    indexTree(tree){
+        //find something useful to do here :-)
+    }
+}
+
+class Templr{
+
+    constructor(source){
+        let parser = new Interpreter(new Lexer(source));
+        let template = parser.build();
+        //console.log(template.print());
+
+        this.utils = new Utils();
+        this.treeNav = this.utils.walkTree(template);
+        this.output = [];
+    }
+
+    render(context){
+        let current = null;
+        while((current = this.treeNav.next()) != null){    
+            let token = current.token();
+            switch(token.type){
+                case 'IF_BLOCK': {
+                    this.renderIf(context);
+                    break;
                 }
-                if(temp.id < id){
+                case 'O_FOR': {
+                    this.renderFor(context);
+                    break;
+                }
+                case 'O_SET': {
+                    this.utils.setProp(current.nodes()[0].token().value.replace(/\{(.*)}/, "$1"))(context);
+                    break;
+                }
+                default: {
+                    this.renderNode(context, current);
                     break;
                 }
             }
-            return list;
-        },
-        reset: function(node){
-            init(node);
+        }
+        return this.output.join("\n");
+    }
+    
+    renderNode(ctx, child){
+        switch(child.token().type){
+            case 'O_PROP': {
+                let res = this.utils.resProp(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"));
+                let resolved = res(ctx);
+                //console.log(resolved);
+                this.output.push(resolved);
+                break;
+            }
+            case 'O_EVAL': {
+                let res = this.utils.resExpr(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"));
+                let resolved = res(ctx);
+                //console.log(resolved);
+                this.output.push(resolved);
+                break;
+            }
+            case 'MARKUP': {
+                let resolved = child.token().value;
+                //console.log(resolved);
+                this.output.push(resolved);
+                break;
+            }
+            default: {
+                break;
+            }
         }
     }
+    
+    renderIf(ctx){
+        let child = this.treeNav.next();
+        //get direct children
+        let siblings = this.treeNav.siblings();
+        //test which condition is true
+        let end_if = siblings[siblings.length - 1];
+        this.treeNav.mark(end_if);
+        let matched = null;
+        let nomatch = null;
+        for(let i = 0; i < siblings.length; i++){
+            let test = siblings[i].node;
+            if(test.token().type == 'O_ELSE'){
+                nomatch = siblings[i];
+                break;
+            }
+    
+            let expr = test.nodes()[0].token().value;
+            let isTrue = this.utils.resExpr(expr.replace(/\{(.*)}/, "$1"));
+            if(isTrue(ctx)){
+                if(!matched){
+                    matched = siblings[i];
+                }
+                else{
+                    throw Error('more than one if condition was successful');
+                }
+            }
+        }
+    
+        if(matched){
+            this.treeNav.jump(matched);
+            doFor.apply(this);
+        }
+        else{
+            if(nomatch){
+                this.treeNav.jump(nomatch);
+                doFor.apply(this);
+            }
+            else{
+                this.treeNav.jump();
+            }
+        }
+    
+        function doFor(){
+            child = this.treeNav.next();
+            while(!["O_END", "O_ELIF", "O_ELSE"].includes(child.token().type)){
+                switch(child.token().type){
+                    case 'IF_BLOCK': {
+                        this.renderIf(ctx);
+                        break;
+                    }
+                    case 'O_FOR': {
+                        this.renderFor(ctx);
+                        break;
+                    }
+                    default: {
+                        this.renderNode(ctx, child);
+                        break;
+                    }
+                }
+                child = this.treeNav.next();
+            }
+            this.treeNav.jump();
+        }
+    }
+    
+    renderFor(context){
+        let node = this.treeNav.next();
+        let params = this.utils.forParams(node.token().value.replace(/\{(.*)}/, "$1"));
+        let cursor = params.cursor, elements = context[params.elements], key = params.key;
+        var result = [];
+        var count = 0;
+        for (var index in elements) {
+            count++;
+            var ctx = {};
+            ctx[cursor] = elements[index];
+            if (key) ctx[key] = index;        
+    
+            if(count < elements.length) this.treeNav.mark();
+            let child = this.treeNav.next();
+            while(child.token().type != 'O_END'){
+                switch(child.token().type){
+                    case 'IF_BLOCK': {
+                        this.renderIf(ctx);
+                        break;
+                    }
+                    case 'O_FOR': {
+                        this.renderFor(ctx);
+                        break;
+                    }
+                    default: {
+                        this.renderNode(ctx, child);
+                        break;
+                    }
+                }
+                child = this.treeNav.next();
+            }
+            if(count < elements.length) this.treeNav.jump();
+        }
+    }    
 }
 
 //******* testing **********//
@@ -799,152 +975,8 @@ let for_html = [
 //     console.log(token);
 // }
 
-let parser = new Interpreter(new Lexer(complex_html));
-let simple = parser.build();
-console.log(simple.print());
-
-let treeNav = Tmpl.walkTree(simple);
 //let context = {list: [{x:2},{x:4},{x:6},{x:8},{x:10}], x: 1};
 let context = {sports: [{name: "rugby"}, {name: "soccer"}, {name: "tennis"}]};
+let templr = new Templr(complex_html);
+console.log(templr.render(context));
 
-let current;
-while((current = treeNav.next()) != null){    
-    let token = current.token();
-    switch(token.type){
-        case 'IF_BLOCK': {
-            renderIf(treeNav, context);
-            break;
-        }
-        case 'O_FOR': {
-            renderFor(treeNav, context);
-            break;
-        }
-        case 'MARKUP': {
-            console.log(token.value);
-            break;
-        }
-        case 'O_SET': {
-            Tmpl.setProp(current.nodes()[0].token().value.replace(/\{(.*)}/, "$1"))(context);
-            break;
-        }
-        default: {
-            break;
-        }
-    }
-}
-
-function renderNode(treeNav, child, ctx){
-    switch(child.token().type){
-        case 'O_PROP': {
-            let res = Tmpl.resProp(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"));
-            console.log(res(ctx));
-            break;
-        }
-        case 'O_EVAL': {
-            let res = Tmpl.resExpr(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"));
-            console.log(res(ctx));
-            break;
-        }
-        case 'O_SET': {
-            Tmpl.setProp(child.nodes()[0].token().value.replace(/\{(.*)}/, "$1"), ctx);
-            break;
-        }
-        case 'MARKUP': {
-            console.log(child.token().value);
-            break;
-        }
-        case 'IF_BLOCK': {
-            renderIf(treeNav, ctx);
-            break;
-        }
-        case 'FOR_LOOP': {
-            renderFor(treeNav, ctx);
-            break;
-        }
-        default: {
-            break;
-        }
-    }
-}
-
-function renderIf(treeNav, ctx){
-    let child = treeNav.next();
-    //get direct children
-    let siblings = treeNav.siblings();
-    //test which condition is true
-    let end_if = siblings[siblings.length - 1];
-    treeNav.mark(end_if);
-    let matched = null;
-    let nomatch = null;
-    for(let i = 0; i < siblings.length; i++){
-        let test = siblings[i].node;
-        if(test.token().type == 'O_ELSE'){
-            nomatch = siblings[i];
-            break;
-        }
-
-        let expr = test.nodes()[0].token().value;
-        let isTrue = Tmpl.resExpr(expr.replace(/\{(.*)}/, "$1"));
-        if(isTrue(ctx)){
-            if(!matched){
-                matched = siblings[i];
-            }
-            else{
-                throw Error('more than one if condition was successful');
-            }
-        }
-    }
-
-    if(matched){
-        treeNav.jump(matched);
-        doFor();
-    }
-    else{
-        if(nomatch){
-            treeNav.jump(nomatch);
-            doFor();
-        }
-        else{
-            treeNav.jump();
-        }
-    }
-
-    function doFor(){
-        child = treeNav.next();
-        while(!["O_END", "O_ELIF", "O_ELSE"].includes(child.token().type)){
-            if(child.token().type == 'IF_BLOCK'){
-                renderIf(treeNav, ctx);
-            }
-            else if(child.token().type == 'FOR_LOOP'){
-                renderFor(treeNav, ctx);
-            }
-            else{
-                renderNode(treeNav, child, ctx);
-            }
-            child = treeNav.next();
-        }
-        treeNav.jump();
-    }
-}
-
-function renderFor(treeNav, context){
-    let node = treeNav.next();
-    let params = Tmpl.forParams(node.token().value.replace(/\{(.*)}/, "$1"));
-    let cursor = params.cursor, elements = context[params.elements], key = params.key;
-    var result = [];
-    var count = 0;
-    for (var index in elements) {
-        count++;
-        var ctx = {};
-        ctx[cursor] = elements[index];
-        if (key) ctx[key] = index;        
-
-        if(count < elements.length) treeNav.mark();
-        let child = treeNav.next();
-        while(child.token().type != 'O_END'){
-            renderNode(treeNav, child, ctx);
-            child = treeNav.next();
-        }
-        if(count < elements.length) treeNav.jump();
-    }
-}

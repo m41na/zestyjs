@@ -10,13 +10,13 @@
 <body>
     <div id="app">
         <h3>sports</h3>
-        <ul id="listing">
+        <ul id="listing" data-tid="pack-0">
             @for{sport, index in sports}
             <li><span>@eval{index + 1}</span> - @{sport.name}</li>
             @end{}
         </ul>
 
-        <div>
+        <div data-tid="pack-1">
             @if{sports[0].rank == 2}
             <p style="background-color:green;">@{sports[0].name}</p>
             @else{}
@@ -24,7 +24,7 @@
             @end{}
         </div>
 
-        <ul id="listing-1">
+        <ul id="listing-1" data-tid="pack-2">
             @for{sport, index in sports} @if{(index % 2 ) > 0}
             <li style="background-color:yellow;"><span>@eval{index + 1}</span> - @{sport.name}</li>
             @else{}
@@ -32,7 +32,7 @@
             @end{} @end{}
         </ul>
 
-        <ul id="listing-3">
+        <ul id="listing-3" data-tid="pack-3">
             @for{sport, index in sports} @if{(index % 3 ) > 0}
             <li style="background-color:orange;"><span>@eval{index + 1}</span> - @{sport.name}</li>
             @else{}
@@ -42,7 +42,7 @@
     </div>
 
     <script src="he.js"></script>
-    <script src="templr.js"></script>
+    <script src="templr2.js"></script>
     <script type="text/javascript">
         ;
         (function(selector) {
@@ -59,12 +59,14 @@
                 }, {
                     rank: 4,
                     name: 'biking'
+                },{
+                    rank: 5,
+                    name: 'running'
                 }]
             };
             var target = document.querySelector(selector);
-            var expanded = Tmpl.splitExpand(he.decode(target.outerHTML))(model).reduce(function(acc, curr) {
-                return acc.concat(curr.value || "");
-            }, "");
+            let templr = new Templr(he.decode(target.outerHTML));
+            let expanded = templr.render(model);
             console.log(expanded);
 
             var range = document.createRange();
