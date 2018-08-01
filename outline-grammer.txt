@@ -1,14 +1,19 @@
-extend		: [o_extend (block)+ c_extend]
-block		: [o_block ((markup)*|(super)?|(slot)+|(incl)*) c_block]
-slot		: [o_slot (markup)* c_slot]
-o_extend	: @extend{(variable|element|filename)}
-c_extend	: @extend{}
-o_block 	: @block{variable}
-c_block		: @block{}
-o_slot	 	: @slot{variable}
-c_slot		: @slot{}
+extend		: [o_extend ext_expr (block)+ c_extend]
+ext_expr	: [{(variable|element|filename)}]
+block		: [o_block blk_expr ((markup)*|(super)?|(slot)+|(incl)*) c_block]
+blk_expr	: [{(variable)}]
+slot		: [o_slot slt_expr (markup)* c_slot]
+slt_expr	: [{(variable)}]
+o_extend	: @extend
+c_extend	: [o_extend o_close]
+o_block 	: @block
+c_block		: [o_block o_close]
+o_slot	 	: @slot
+c_slot		: [o_slot o_close]
 super	 	: @super{}
-incl		: @incl{(variable|element|filename)}
+incl		: [o_incl inc_expr]
+inc_expr	: [{(variable|element|filename)}]
+o_incl		: @incl
 variable	: \w+
 element		: dom:\w+
 filename	: file:\w+
