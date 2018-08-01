@@ -10,7 +10,8 @@ o_block 	: @block
 c_block		: [o_block o_close]
 o_slot	 	: @slot
 c_slot		: [o_slot o_close]
-super	 	: @super{}
+super		: [o_super o_close]
+o_super	 	: @super
 incl		: [o_incl inc_expr]
 inc_expr	: [{(variable|element|filename)}]
 o_incl		: @incl

@@ -1,6 +1,6 @@
-var Tmpl = require('./templr.js');
+let TmplTest = {};
 
-var context = {
+TmplTest.context = {
     name: "James",
     profile: {
         doe: '2010/02/01',
@@ -23,18 +23,9 @@ var context = {
     ]
 };
 
-console.log(Tmpl.objProp('age', { age: 30 }));
-console.log(Tmpl.objProp('profile[\'reg-addr\'][0].type', context));
+TmplTest.sports_data = {sports: [{name: "rugby"}, {name: "soccer"}, {name: "tennis"}]};
 
-console.log(Tmpl.resProp('profile[age]')(context));
-console.log(Tmpl.resProp('profile[\'reg-addr\'][0].type')(context));
-console.log(Tmpl.resProp('profile[reg-addr][1].type')(context));
-
-console.log(Tmpl.resExpr('ctx.age > 30')({ ctx: { name: 'mike', age: 20 } }));
-console.log(Tmpl.resExpr("ctx['age'] > 30 && ctx.age > 35")({ ctx: { name: 'mike', age: 40 } }));
-console.log(Tmpl.resExpr("age > 30")({ name: 'mike', age: 40 }));
-
-var cozy = [
+TmplTest.cozy = [
     "<div class='person'>",
     "<p data-doe='@{profile.doe}'>@{name}</p>",
     "@if{profile.age < 20}",
@@ -52,7 +43,7 @@ var cozy = [
     "</div>"
 ].join("");
 
-var dozy = [
+TmplTest.dozy = [
     "<ul class='sports'>",
     "@for{sport in sports}",
     "@if{sport.rank == 1}",
@@ -68,22 +59,19 @@ var dozy = [
     "</ul>"
 ].join("");
 
-var eazy = "<div id='parent'>@slot{main}child content@slot{}</div>";
+TmplTest.eazy = "<div id='parent'>@slot{main}child content@slot{}</div>";
 
-console.log(Tmpl.forParams("abs, xyc in letters"));
-console.log(Tmpl.forParams("abc in letters"));
+TmplTest.model = { xyz: 10, list: [10, 20, 25, 40], x: 25, profile: { name: 'mike', age: 30 } };
 
-var model = { xyz: 10, list: [10, 20, 25, 40], x: 25, profile: { name: 'mike', age: 30 } };
+TmplTest.simple0 = "do eval @eval{(xyz / 2) > 10} retrieve value @{profile.name}";
+TmplTest.simple1 = "do eval @eval{(xyz * 2) > 10} start if @if{list[2] >= 30} if matched @else{} else matched @end{} retrieve value @{profile.name}";
+TmplTest.simple2 = "do eval @eval{(xyz * 2) > 10} start if @if{list[2] >= 30} if matched @elif{list[2] < 30} elif matched @end{} retrieve value @{profile.name}";
+TmplTest.simple3 = "do eval @eval{(xyz ^ 2) > 10} start if @if{list[2] == 25} if matched @elif{list[2] == 40} elif matched @else{} else matched @end{} retrieve value @{profile.name}";
+TmplTest.simple4 = "do eval @eval{(xyz - 2) > 10} start if @if{list[2] >= 30} if matched @elif{list[2] == 40} elif matched @else{} else matched @end{} retrieve value @{profile.name}";
+TmplTest.simple5 = "do eval @eval{(xyz + 2) > 10} start for @for{a in list} <p>@{a}</p> @end{} end for @end{} retrieve value @{profile.name}";
+TmplTest.simple6 = "do eval @eval{(xyz - 2) > 10} start for @for{elem, index in list} <p data-index='@{index}'>@{elem}</p> start if @if{elem > 30} if matched @elif{elem < 30} elif matched @else{} else matched @end{} end for @end{} retrieve value @{profile.name}";
 
-var simple0 = "do eval @eval{(xyz / 2) > 10} retrieve value @{profile.name}";
-var simple1 = "do eval @eval{(xyz * 2) > 10} start if @if{list[2] >= 30} if matched @else{} else matched @end{} retrieve value @{profile.name}";
-var simple2 = "do eval @eval{(xyz * 2) > 10} start if @if{list[2] >= 30} if matched @elif{list[2] < 30} elif matched @end{} retrieve value @{profile.name}";
-var simple3 = "do eval @eval{(xyz ^ 2) > 10} start if @if{list[2] == 25} if matched @elif{list[2] == 40} elif matched @else{} else matched @end{} retrieve value @{profile.name}";
-var simple4 = "do eval @eval{(xyz - 2) > 10} start if @if{list[2] >= 30} if matched @elif{list[2] == 40} elif matched @else{} else matched @end{} retrieve value @{profile.name}";
-var simple5 = "do eval @eval{(xyz + 2) > 10} start for @for{a in list} <p>@{a}</p> @end{} end for @end{} retrieve value @{profile.name}";
-var simple6 = "do eval @eval{(xyz - 2) > 10} start for @for{elem, index in list} <p data-index='@{index}'>@{elem}</p> start if @if{elem > 30} if matched @elif{elem < 30} elif matched @else{} else matched @end{} end for @end{} retrieve value @{profile.name}";
-
-var sports_html = [
+TmplTest.sports_html = [
     "@extend{simple_html}",
 
     "@block{ listing }",
@@ -100,7 +88,7 @@ var sports_html = [
     "@extend{}"
 ].join("");
 
-var yellow_html = [
+TmplTest.yellow_html = [
     "@extend{simple_html}",
 
     "@block{ wrapped }",
@@ -110,7 +98,7 @@ var yellow_html = [
     "@extend{}"
 ].join("");
 
-var simple_html = [
+TmplTest.simple_html = [
     "@extend{layout_html}",
 
     "@block{ title } Simple Layout @block{}",
@@ -126,7 +114,7 @@ var simple_html = [
     "@extend{}"
 ].join("");
 
-var layout_html = [
+TmplTest.layout_html = [
     "<div id=\"layout\">",
 
     "<div id=\"title\">@slot{title}Placeholder Title@slot{}</div>",
@@ -140,22 +128,61 @@ var layout_html = [
     "</div>"
 ].join("");
 
-var line1 = "@for{ab in two} do @end @if{x>2} x>2 @elif{x<2} x<2 @else{} value=@{x} @end{} @end{} @set{b=2} @eval{b==2}";
-var line2 = "<parent>@slot{line} parent content @slot{}</parent>";
-var line3 = "@extend{line2} @block{line}@super{} <br/> show content@block{} @extend{}";
+TmplTest.complex_html = [
+    "<div id=\"app\">",
+    "<h3>sports</h3>",
+    "<ul id=\"listing\">",
+    "@for{sport, index in sports}",
+    "<li><span>@eval{index + 1}</span> - @{sport.name}</li>",
+    "@end{}",
+    "</ul>",
+    "",
+    "<div>",
+    "@if{sports[0].rank == 2}",
+    "<p style=\"background-color:green;\">@{sports[0].name}</p>",
+    "@else{}",
+    "<p style=\"background-color:red;\">@{sports[0].name}</p>",
+    "@end{}",
+    "</div>",
+    "",
+    "<ul id=\"listing-1\">",
+    "@for{sport, index in sports} @if{(index % 2 ) > 0}",
+    "<li style=\"background-color:yellow;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
+    "@else{}",
+    "<li style=\"background-color:blue;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
+    "@end{} @end{}",
+    "</ul>",
+    "",
+    "<ul id=\"listing-3\">",
+    "@for{sport, index in sports} @if{(index % 3 ) > 0}",
+    "<li style=\"background-color:orange;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
+    "@else{}",
+    "<li style=\"background-color:indigo;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
+    "@end{} @end{}",
+    "</ul>",
+    "</div>"
+].join("");
 
-var element = Tmpl.buildElements(yellow_html, 'yellow_html');
-console.log(element.render().reduce(function (acc, curr) {
-    return acc.concat(curr.value + "\n");
-}, ""));
+TmplTest.if_html = [
+    "<div>",
+    "@set{x = 1} @if{ x > 3 } @{x} greater @elif{x == 3} equal @else{} less @end{}",
+    "@eval{x*10}",
+    "</div>"
+].join("");
 
-// console.log(Tmpl.expandExtend(Tmpl.splitTemplate(simple_html)).reduce(function(acc, curr) {
-//     return acc.concat(curr.value + "\n");
-// }, ""));
+TmplTest.if_data = {x: 3};
 
-// console.log(Tmpl.expandTemplate(0, Tmpl.splitTemplate(yellow_html))(context).reduce(function(acc, curr) {
-//     return acc.concat(curr.value + "\n");
-// }, ""));
+TmplTest.for_html = [
+    "<div>",
+    "@for{ item, y in list} @{y} - @{item.x} awesome @end{}",
+    "@eval{x*10}",
+    "</div>"
+].join("");
 
-// var element = Tmpl.buildElements(simple_html, "simple_html");
-// console.log(element);
+TmplTest.for_data = {x: 3, list: [{x:1},{x:2},{x:3}]};
+
+TmplTest.line1 = "@for{ab in two} do @end @if{x>2} x>2 @elif{x<2} x<2 @else{} value=@{x} @end{} @end{} @set{b=2} @eval{b==2}";
+TmplTest.line2 = "<parent>@slot{line} parent content @slot{}</parent>";
+TmplTest.line3 = "@extend{line2} @block{line}@super{} <br/> show content@block{} @extend{}";
+
+module.exports = TmplTest;

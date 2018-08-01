@@ -226,29 +226,6 @@ let NewNode = function (new_token) {
             nodes.forEach(e=> e.visit(visitor));
         }
     }
-
-    this.accept = function(node){
-        if(node.token().type == 'O_BLOCK'){
-            let slot_index = this.find('O_SLOT');
-            if(slot_index > -1){
-                let slot_node = this.nodes()[slot_index];  
-
-                let block_name = node.token().value.trim();
-                let slot_name = slot_node.token().value.trim();            
-                
-                if(block_name == slot_name){
-                    let super_index = -1;
-                    if((super_index = node.find('SUPER')) > -1){
-                        node.splice(super_index, slot_node.nodes());
-                    }
-                    return this.replace(slot_index, node);
-                }
-            }
-        }
-        if(nodes.length > 0){
-            nodes.forEach(e=> e.accept(node));
-        }
-    }
 }
 
 class Interpreter{
@@ -280,8 +257,10 @@ class Interpreter{
         let token = this.curr_token;
         let slot = new NewNode(token);
         this.eat(token.type);
+
         let markup = this.markup();
         slot.push(markup);
+        
         token = this.curr_token;
         let end = new NewNode(token);
         slot.push(end);
@@ -291,9 +270,13 @@ class Interpreter{
 
     super(){
         let token = this.curr_token;
-        let node = new NewNode(token);
+        let sup = new NewNode(token);
         this.eat(token.type);
-        return node;
+
+        token = this.curr_token;
+        let close = this.close();
+        sup.push(close);
+        return sup;
     }
 
     block(){
@@ -301,7 +284,7 @@ class Interpreter{
         let block = new NewNode(token);
         this.eat(token.type);
         token = this.curr_token;
-        while(token.type != 'C_BLOCK'){
+        while(token.type != 'O_BLOCK'){
             switch(token.type){
                 case 'MARKUP': {
                     let markup = this.markup();
@@ -324,7 +307,7 @@ class Interpreter{
                     break;
                 }
                 default: {
-                    throw Error(`${token.type} - unexpected token encountered`);
+                    throw Error(`${token.type} - unexpected token encountered inside @block content`);
                 }
             }
             token = this.curr_token;
@@ -340,8 +323,9 @@ class Interpreter{
         let token = this.curr_token;
         let extend = new NewNode(token);
         this.eat(token.type);
+        
         token = this.curr_token;
-        while(token.type != 'C_EXTEND'){
+        while(token.type == 'O_BLOCK'){
             switch(token.type){
                 case 'O_BLOCK': {
                     let block = this.block();
@@ -358,18 +342,7 @@ class Interpreter{
         let end = new NewNode(token);
         extend.push(end);
         this.eat(token.type);
-
-        //expand the parent template
-        let source = extend.token().value;
-        let template = this.loadTemplate(source);
-        let parser = new Interpreter(new Lexer(template));
-        let parent = parser.build();
-        //using each @block, visit the parent and replace matching @slot 
-        let block = null;
-        while((block = extend.pluck('O_BLOCK')) != null){
-            parent.accept(block);
-        }        
-        return parent;
+        return extend;
     }
 
     include(){
@@ -886,10 +859,6 @@ class Utils{
             }
         }
     }
-
-    indexTree(tree){
-        //find something useful to do here :-)
-    }
 }
 
 class Templr{
@@ -898,10 +867,54 @@ class Templr{
         let parser = new Interpreter(new Lexer(source));
         let template = parser.build();
         //console.log(template.print());
+        template = this.expand(template);
 
         this.utils = new Utils();
         this.treeNav = this.utils.walkTree(template);
         this.output = [];
+    }
+
+    expand(head){
+        if(head.token().type == 'O_EXTEND'){
+
+            //expand the parent template
+            let source = head.token().value;
+            let template = this.loadTemplate(source);
+            let parser = new Interpreter(new Lexer(template));
+            let parent = parser.build();
+            //using each @block, visit the parent and replace matching @slot 
+            let block = null;
+            while((block = head.pluck('O_BLOCK')) != null){
+                this.decorate(parent, block);
+            }        
+            return parent;
+        }
+        else{
+            return head;
+        }
+    }
+
+    decorate(target, block){
+        if(block.token().type == 'O_BLOCK'){
+            let slot_index = block.find('O_SLOT');
+            if(slot_index > -1){
+                let slot_node = block.nodes()[slot_index];  
+
+                let block_name = block.token().value.trim();
+                let slot_name = slot_node.token().value.trim();            
+                
+                if(block_name == slot_name){
+                    let super_index = -1;
+                    if((super_index = block.find('SUPER')) > -1){
+                        block.splice(super_index, slot_node.nodes());
+                    }
+                    return block.replace(slot_index, block);
+                }
+            }
+        }
+        if(nodes.length > 0){
+            nodes.forEach(e=> this.decorate(e, block));
+        }
     }
 
     render(context){
@@ -1060,128 +1073,24 @@ class Templr{
 }
 
 //******* testing logic **********//
-var complex_html = [
-"<div id=\"app\">",
-    "<h3>sports</h3>",
-    "<ul id=\"listing\">",
-        "@for{sport, index in sports}",
-        "<li><span>@eval{index + 1}</span> - @{sport.name}</li>",
-        "@end{}",
-    "</ul>",
-    "",
-    "<div>",
-        "@if{sports[0].rank == 2}",
-        "<p style=\"background-color:green;\">@{sports[0].name}</p>",
-        "@else{}",
-        "<p style=\"background-color:red;\">@{sports[0].name}</p>",
-        "@end{}",
-    "</div>",
-    "",
-    "<ul id=\"listing-1\">",
-        "@for{sport, index in sports} @if{(index % 2 ) > 0}",
-        "<li style=\"background-color:yellow;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
-        "@else{}",
-        "<li style=\"background-color:blue;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
-        "@end{} @end{}",
-    "</ul>",
-    "",
-    "<ul id=\"listing-3\">",
-        "@for{sport, index in sports} @if{(index % 3 ) > 0}",
-        "<li style=\"background-color:orange;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
-        "@else{}",
-        "<li style=\"background-color:indigo;\"><span>@eval{index + 1}</span> - @{sport.name}</li>",
-        "@end{} @end{}",
-    "</ul>",
-"</div>"
-].join("");
+let Data = require('./templr-tst.js');
 
-let if_html = [
-    "<div>",
-    "@set{x = 1} @if{ x > 2 } @{x} greater @elif{x == 3} equal @else{} less @end{}",
-    "@eval{x*10}",
-    "</div>"
-].join("");
+let templr = new Templr(Data.for_html);
+console.log(templr.render(Data.for_data));
 
-let for_html = [
-    "<div>",
-    "@for{ item, y in list} @{y} - @{item.x} awesome @end{}",
-    "@eval{x*10}",
-    "</div>"
-].join("");
-
-// let lexer = new Lexer(complex_html);
-// let token = null;
-// while((token = lexer.getNextToken()) != null){
-//     console.log(token);
-// }
-
-//let context = {list: [{x:2},{x:4},{x:6},{x:8},{x:10}], x: 1};
-let context = {sports: [{name: "rugby"}, {name: "soccer"}, {name: "tennis"}]};
-let templr = new Templr(complex_html);
-console.log(templr.render(context));
-
-//******* testing layout **********//
-var incl_html = [
-    "<p>Red</p>",
-    "<p>Green</p>"
-].join("");
-
-var colors_html = [
-    "@extend{simple_html}",
-
-    "@block{ colors }", 
-    "<p>Yellow</p>",
-    "<p>Blue</p>",
-    "@incl{incl_html}",
-    "@block{}",
-
-    "@extend{}"
-].join("");
-
-var simple_html = [
-    "@extend{layout_html}",
-
-    "@block{ title } Simple Layout @block{}",
-
-    "@block{ main }",
-    "<div id=\"content\">",
-    "@super{}",
-    "<p>It's your birthday!!</p>",
-    "@slot{colors}<p>Rainbow</p>@slot{}",
-    "</div > ",
-    "@block{}",
-
-    "@extend{}"
-].join("");
-
-var layout_html = [
-    "<div id=\"layout\">",
-
-    "<div id=\"title\">@slot{title}Placeholder Title@slot{}</div>",
-
-    "<div id=\"app\">",
-    "@slot{ main }",
-    "<h3>Messages</h3>",
-    "@slot{}",
-    "</div>",
-    "<div>Mode colors: ",
-    "@incl{incl_html}</div>",
-    "</div>"
-].join("");
+// let templr = new Templr(Data.if_html);
+// console.log(templr.render(Data.if_data));
 
 
-let lexer = new Lexer(colors_html);
-let token = null;
-while((token = lexer.getNextToken()) != null){
-    console.log(token);
-}
+// templr = new Templr(Data.complex_html);
+// console.log(templr.render(Data.sports_data));
 
-let parser = new Interpreter(new Lexer(colors_html));
-let colors = parser.build();
-colors.visit({
-    accept: function(node){
-        if(node.token().type == 'MARKUP'){
-            console.log(node.token().value);
-        }
-    }
-});
+// let parser = new Interpreter(new Lexer(colors_html));
+// let colors = parser.build();
+// colors.visit({
+//     accept: function(node){
+//         if(node.token().type == 'MARKUP'){
+//             console.log(node.token().value);
+//         }
+//     }
+// });
