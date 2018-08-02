@@ -698,15 +698,37 @@ class Utils{
 
     resExpr (expr) {
         return function (ctx) {
-            //padd with a space at the end for regex to match
-            var exec = expr.concat(' ').replace(/(\w+(\.|\[).*?)\s/g, function (m, p) {
-                return this.objProp(p, ctx);
-            }.bind(this));
-            if (exec.search(/([a-zA-Z_]+?)\s/g) > -1) {
-                exec = expr.concat(' ').replace(/([a-zA-Z_]+?)\s/g, function (m, p) {
-                    var e = this.objProp(p, ctx);
-                    return this.isNumeric(e) ? e : this.isString(e) ? "'" + e + "'" : e;
-                }.bind(this));
+            let len = 0;
+            let target = "";
+            let exec = "";
+            let leftside = true;
+            while(len < expr.length){
+                let ch = expr.charAt(len);
+                if(leftside && !['<','>','=','+','-','*','/','!'].includes(ch)){
+                    target += ch;
+                }
+                else if(['&','|'].includes(ch)){
+                    if(expr.chatAt(len+1) == ch){
+                        exec += "&&";
+                        len+=2;
+                    }
+                    else{
+                        exec += '&';
+                        len+=1;
+                    }
+                    leftside = true;
+                    continue;
+                }
+                else{
+                    if(target.length > 0){
+                        let e = this.objProp(target.trim(), ctx);
+                        exec += this.isNumeric(e) ? e : this.isString(e) ? "'" + e + "'" : e;
+                        leftside = false;
+                        target = "";
+                    }
+                    exec += ch;
+                }
+                len++;
             }
             logger.log('executable expression -> ' + exec);
             return eval(exec);
@@ -1075,22 +1097,24 @@ class Templr{
 //******* testing logic **********//
 let Data = require('./templr-tst.js');
 
-let templr = new Templr(Data.for_html);
-console.log(templr.render(Data.for_data));
+// let templr = new Templr(Data.for_html);
+// console.log(templr.render(Data.for_data));
 
 // let templr = new Templr(Data.if_html);
 // console.log(templr.render(Data.if_data));
 
-
-// templr = new Templr(Data.complex_html);
+// let templr = new Templr(Data.complex_html);
 // console.log(templr.render(Data.sports_data));
 
-// let parser = new Interpreter(new Lexer(colors_html));
-// let colors = parser.build();
-// colors.visit({
-//     accept: function(node){
-//         if(node.token().type == 'MARKUP'){
-//             console.log(node.token().value);
-//         }
-//     }
-// });
+// let templr = new Templr(Data.cozy);
+// console.log(templr.render(Data.context));
+
+let parser = new Interpreter(new Lexer(Data.sports_html));
+let colors = parser.build();
+colors.visit({
+    accept: function(node){
+        if(node.token().type == 'MARKUP'){
+            console.log(node.token().value);
+        }
+    }
+});
