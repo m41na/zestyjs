@@ -72,7 +72,7 @@ TmplTest.simple5 = "do eval @eval{(xyz + 2) > 10} start for @for{a in list} <p>@
 TmplTest.simple6 = "do eval @eval{(xyz - 2) > 10} start for @for{elem, index in list} <p data-index='@{index}'>@{elem}</p> start if @if{elem > 30} if matched @elif{elem < 30} elif matched @else{} else matched @end{} end for @end{} retrieve value @{profile.name}";
 
 TmplTest.sports_html = [
-    "@extend{Data.simple_html}",
+    "@extend{simple_html}",
 
     "@block{ wrapped }",
     "<div id=\"content\">",
@@ -89,7 +89,7 @@ TmplTest.sports_html = [
 ].join("");
 
 TmplTest.yellow_html = [
-    "@extend{Data.simple_html}",
+    "@extend{simple_html}",
 
     "@block{ wrapped }",
     "<p>YELLOW HERE!</p > ",
@@ -99,7 +99,7 @@ TmplTest.yellow_html = [
 ].join("");
 
 TmplTest.simple_html = [
-    "@extend{Data.layout_html}",
+    "@extend{layout_html}",
 
     "@block{ title } Simple Layout @block{}",
 
@@ -185,4 +185,22 @@ TmplTest.line1 = "@for{ab in two} do @end @if{x>2} x>2 @elif{x<2} x<2 @else{} va
 TmplTest.line2 = "<parent>@slot{line} parent content @slot{}</parent>";
 TmplTest.line3 = "@extend{line2} @block{line}@super{} <br/> show content@block{} @extend{}";
 
-module.exports = TmplTest;
+//******* testing logic **********//
+
+// let templr = new Templr(Data.for_html);
+// console.log(templr.render(Data.for_data));
+
+// let templr = new Templr(Data.if_html);
+// console.log(templr.render(Data.if_data));
+
+// let templr = new Templr(Data.complex_html);
+// console.log(templr.render(Data.sports_data));
+
+// let templr = new Templr(Data.cozy);
+// console.log(templr.render(Data.context));
+
+require('./templr3.js');
+
+let templr = new Templr(TmplTest.sports_html);
+console.log(templr.render(TmplTest.context));
+

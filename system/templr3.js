@@ -153,7 +153,7 @@ class Lexer{
                     return new Token('O_ELSE', input);
                 }
                 case '@incl': {
-                    let payload = input.substring(oparen + 1, input.length  -1);
+                    let payload = input.substring(oparen + 1, input.length);
                     return new Token('INCLUDE', payload);
                 }
                 case '@extend': {
@@ -352,11 +352,16 @@ class Interpreter{
         extend.push(ext_expr);
         
         token = this.curr_token;
-        while(token.type == 'O_BLOCK'){
+        while(['O_BLOCK', 'MARKUP'].includes(token.type)){
             switch(token.type){
                 case 'O_BLOCK': {
                     let block = this.block();
                     extend.push(block);
+                    break;
+                }
+                case 'MARKUP': {
+                    //ignore
+                    this.eat(token.type);
                     break;
                 }
                 default: {
@@ -371,8 +376,14 @@ class Interpreter{
         this.eat(token.type);
 
         //eat close
-         token = this.curr_token;
+        token = this.curr_token;
         this.eat(token.type);
+
+        //eat dangling markup if any
+        token = this.curr_token;
+        if(token.type == 'MARKUP'){
+            this.eat(token.type);
+        }
         return extend;
     }
 
@@ -381,7 +392,10 @@ class Interpreter{
         let include = new NewNode(token);
         this.eat(token.type);
 
-        let source = token.value;
+        let incl_expr = this.expr();
+        include.push(incl_expr);
+
+        let source = incl_expr.token().value.replace(/\{(.*)}/, "$1").trim();
         let template = this.loadTemplate(source);
         let parser = new Interpreter(new Lexer(template));
         let node = parser.build();
@@ -668,9 +682,6 @@ class Interpreter{
                 }
             }
         }
-        // if(target.nodes().length > 0){
-        //     target.nodes().forEach(e=> this.decorate(e, block));
-        // }
     }
 
     build(){
@@ -777,7 +788,7 @@ class Utils{
             let leftside = true;
             while(len < expr.length){
                 let ch = expr.charAt(len);
-                if(leftside && !['<','>','=','+','-','*','/','!'].includes(ch)){
+                if(leftside && !['<','>','=','+','-','*','/','%','!','(',')'].includes(ch)){
                     target += ch;
                 }
                 else if(['&','|'].includes(ch)){
@@ -1123,20 +1134,3 @@ class Templr{
     }    
 }
 
-//******* testing logic **********//
-let Data = require('./templr-tst.js');
-
-// let templr = new Templr(Data.for_html);
-// console.log(templr.render(Data.for_data));
-
-// let templr = new Templr(Data.if_html);
-// console.log(templr.render(Data.if_data));
-
-// let templr = new Templr(Data.complex_html);
-// console.log(templr.render(Data.sports_data));
-
-// let templr = new Templr(Data.cozy);
-// console.log(templr.render(Data.context));
-
-let templr = new Templr(Data.yellow_html);
-console.log(templr.render(Data.context));
