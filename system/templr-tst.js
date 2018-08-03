@@ -72,9 +72,9 @@ TmplTest.simple5 = "do eval @eval{(xyz + 2) > 10} start for @for{a in list} <p>@
 TmplTest.simple6 = "do eval @eval{(xyz - 2) > 10} start for @for{elem, index in list} <p data-index='@{index}'>@{elem}</p> start if @if{elem > 30} if matched @elif{elem < 30} elif matched @else{} else matched @end{} end for @end{} retrieve value @{profile.name}";
 
 TmplTest.sports_html = [
-    "@extend{simple_html}",
+    "@extend{Data.simple_html}",
 
-    "@block{ listing }",
+    "@block{ wrapped }",
     "<div id=\"content\">",
     "@super{}",
     "<ul id=\"listing\">",
@@ -89,7 +89,7 @@ TmplTest.sports_html = [
 ].join("");
 
 TmplTest.yellow_html = [
-    "@extend{simple_html}",
+    "@extend{Data.simple_html}",
 
     "@block{ wrapped }",
     "<p>YELLOW HERE!</p > ",
@@ -99,7 +99,7 @@ TmplTest.yellow_html = [
 ].join("");
 
 TmplTest.simple_html = [
-    "@extend{layout_html}",
+    "@extend{Data.layout_html}",
 
     "@block{ title } Simple Layout @block{}",
 
@@ -174,12 +174,12 @@ TmplTest.if_data = {x: 3};
 
 TmplTest.for_html = [
     "<div>",
-    "@for{ item, y in list} @{y} - @{item.x} awesome @end{}",
+    "@for{ item, y in list} @{y} - @{item.a} awesome @end{}",
     "@eval{x*10}",
     "</div>"
 ].join("");
 
-TmplTest.for_data = {x: 3, list: [{x:1},{x:2},{x:3}]};
+TmplTest.for_data = {x: 3, list: [{a:'one'},{a:'two'},{a:'three'}]};
 
 TmplTest.line1 = "@for{ab in two} do @end @if{x>2} x>2 @elif{x<2} x<2 @else{} value=@{x} @end{} @end{} @set{b=2} @eval{b==2}";
 TmplTest.line2 = "<parent>@slot{line} parent content @slot{}</parent>";

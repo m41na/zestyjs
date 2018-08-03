@@ -117,7 +117,7 @@ class Lexer{
     }
 
     createToken(input, oparen){
-        if(/\{.+,?.+in.+\}/.test(input)){
+        if(/\{.+,?.+\sin\s.+\}/.test(input)){
             return new Token('FOR_EXPR', input);
         }
         else if(/\{\s?}/.test(input)){
@@ -258,12 +258,18 @@ class Interpreter{
         let slot = new NewNode(token);
         this.eat(token.type);
 
+        let expr = this.expr();
+        slot.push(expr);
+
         let markup = this.markup();
         slot.push(markup);
         
+        //eat end
         token = this.curr_token;
-        let end = new NewNode(token);
-        slot.push(end);
+        this.eat(token.type);
+
+        //eat close
+        token = this.curr_token;
         this.eat(token.type);
         return slot;
     }
@@ -273,9 +279,9 @@ class Interpreter{
         let sup = new NewNode(token);
         this.eat(token.type);
 
+        //eat close
         token = this.curr_token;
-        let close = this.close();
-        sup.push(close);
+        this.eat(token.type);
         return sup;
     }
 
@@ -283,6 +289,10 @@ class Interpreter{
         let token = this.curr_token;
         let block = new NewNode(token);
         this.eat(token.type);
+
+        let blk_expr = this.expr();
+        block.push(blk_expr);
+
         token = this.curr_token;
         while(token.type != 'O_BLOCK'){
             switch(token.type){
@@ -306,6 +316,16 @@ class Interpreter{
                     block.push(include);
                     break;
                 }
+                case 'O_FOR': {
+                    let for_loop = this.for_loop();
+                    block.push(for_loop);
+                    break;
+                }
+                case 'O_IF': {
+                    let if_block = this.if_block();
+                    block.push(if_block);
+                    break;
+                }
                 default: {
                     throw Error(`${token.type} - unexpected token encountered inside @block content`);
                 }
@@ -313,8 +333,12 @@ class Interpreter{
             token = this.curr_token;
         }
 
-        let end = new NewNode(token);
-        block.push(end);
+        //eat end
+        token = this.curr_token;
+        this.eat(token.type);
+
+        //eat close
+        token = this.curr_token;
         this.eat(token.type);
         return block;
     }
@@ -323,6 +347,9 @@ class Interpreter{
         let token = this.curr_token;
         let extend = new NewNode(token);
         this.eat(token.type);
+
+        let ext_expr = this.expr();
+        extend.push(ext_expr);
         
         token = this.curr_token;
         while(token.type == 'O_BLOCK'){
@@ -339,8 +366,12 @@ class Interpreter{
             token = this.curr_token;
         }
 
-        let end = new NewNode(token);
-        extend.push(end);
+        //eat end
+        token = this.curr_token;
+        this.eat(token.type);
+
+        //eat close
+         token = this.curr_token;
         this.eat(token.type);
         return extend;
     }
@@ -617,6 +648,29 @@ class Interpreter{
         var data = fs.readFileSync(name, "utf-8");
         var templ = /<template.*?>([^].*?)<\/template>/.exec(data);
         return templ[1];
+    }    
+
+    decorate(target, block){
+        if(block.token().type == 'O_BLOCK'){
+            let slot_index = target.find('O_SLOT');
+            if(slot_index > -1){
+                let slot_node = target.nodes()[slot_index];  
+
+                let block_name = block.nodes()[0].token().value.replace(/\{(.*)}/, "$1").trim();
+                let slot_name = slot_node.nodes()[0].token().value.replace(/\{(.*)}/, "$1").trim();            
+                
+                if(block_name == slot_name){
+                    let super_index = -1;
+                    if((super_index = block.find('SUPER')) > -1){
+                        block.splice(super_index, slot_node.nodes());
+                    }
+                    return target.splice(slot_index, block.nodes());
+                }
+            }
+        }
+        // if(target.nodes().length > 0){
+        //     target.nodes().forEach(e=> this.decorate(e, block));
+        // }
     }
 
     build(){
@@ -625,7 +679,26 @@ class Interpreter{
             if(token.type == 'O_EXTEND'){                
                 let extend = this.extend();
                 this.head.push(extend);
-                break;
+
+                //assert curr_token == NULL at this point
+                if(this.curr_token != null){
+                    throw Error("It looks like there is more tokens life to be processed");
+                }
+                else{                    
+                    //expand the parent template
+                    let source = extend.nodes()[0].token().value;
+                    let template = this.loadTemplate(source.replace(/\{(.*)}/, "$1"));
+                    let parser = new Interpreter(new Lexer(template));
+                    let parent = parser.build();
+                    //using each @block, visit the parent and replace matching @slot 
+                    let block = null;
+                    console.log(extend.print());
+                    console.log(parent.print());
+                    while((block = extend.pluck('O_BLOCK')) != null){
+                        this.decorate(parent, block);
+                    }        
+                    return parent;
+                }
             }
             else if(token.type == 'MARKUP'){
                 let markup = this.markup();
@@ -889,54 +962,10 @@ class Templr{
         let parser = new Interpreter(new Lexer(source));
         let template = parser.build();
         //console.log(template.print());
-        template = this.expand(template);
 
         this.utils = new Utils();
         this.treeNav = this.utils.walkTree(template);
         this.output = [];
-    }
-
-    expand(head){
-        if(head.token().type == 'O_EXTEND'){
-
-            //expand the parent template
-            let source = head.token().value;
-            let template = this.loadTemplate(source);
-            let parser = new Interpreter(new Lexer(template));
-            let parent = parser.build();
-            //using each @block, visit the parent and replace matching @slot 
-            let block = null;
-            while((block = head.pluck('O_BLOCK')) != null){
-                this.decorate(parent, block);
-            }        
-            return parent;
-        }
-        else{
-            return head;
-        }
-    }
-
-    decorate(target, block){
-        if(block.token().type == 'O_BLOCK'){
-            let slot_index = block.find('O_SLOT');
-            if(slot_index > -1){
-                let slot_node = block.nodes()[slot_index];  
-
-                let block_name = block.token().value.trim();
-                let slot_name = slot_node.token().value.trim();            
-                
-                if(block_name == slot_name){
-                    let super_index = -1;
-                    if((super_index = block.find('SUPER')) > -1){
-                        block.splice(super_index, slot_node.nodes());
-                    }
-                    return block.replace(slot_index, block);
-                }
-            }
-        }
-        if(nodes.length > 0){
-            nodes.forEach(e=> this.decorate(e, block));
-        }
     }
 
     render(context){
@@ -1109,12 +1138,5 @@ let Data = require('./templr-tst.js');
 // let templr = new Templr(Data.cozy);
 // console.log(templr.render(Data.context));
 
-let parser = new Interpreter(new Lexer(Data.sports_html));
-let colors = parser.build();
-colors.visit({
-    accept: function(node){
-        if(node.token().type == 'MARKUP'){
-            console.log(node.token().value);
-        }
-    }
-});
+let templr = new Templr(Data.yellow_html);
+console.log(templr.render(Data.context));
