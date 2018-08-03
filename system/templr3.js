@@ -1,9 +1,4 @@
-var fs;
-try {
-    fs = require('fs');
-} catch (error) {
-    console.log('trouble with require - ' + error);
-}
+import he from './he';
 
 let logger = function (flag) {
     var enabled = flag;
@@ -645,13 +640,16 @@ class Interpreter{
     loadTemplate(name) {
         var index;
         if ((index = name.search(/^dom:/)) > -1) {
-            return he.decode(document.querySelector(name.substring('dom:'.length)).innerHTML);
+            let element = document.querySelector(name.substring('dom:'.length));
+            return he.decode(element.innerHTML);
         }
         else if ((index = name.search(/^tpl:/)) > -1) {
-            return he.decode(document.querySelector(name.substring('tpl:'.length)).innerHTML);
+            let element = document.querySelector(name.substring('tpl:'.length));
+            return he.decode(element.innerHTML);
         }
         else if ((index = name.search(/^fs:/)) > -1) {
-            return this.loadFsTemplate(name.substring('fs:'.length));
+            let filename = name.substring('fs:'.length);
+            return this.loadFsTemplate(filename);
         }
         else {
             return eval(name);
@@ -1134,3 +1132,4 @@ class Templr{
     }    
 }
 
+export default Templr;

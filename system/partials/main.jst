@@ -1,11 +1,11 @@
 <template id="main">
-    @extend{dom:#app}      
+    @extend{tpl_main}      
     @block{title}Templr@block{}
     @block{main}
     <div id="content">
         @slot{listing}placeholder@slot{}
     </div>
     <hr/>
-    @incl{tpl:#widget}
+    @incl{tpl_widget}
     @block{} @extend{}
 </template>

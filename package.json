@@ -1,0 +1,38 @@
+{
+  "name": "zestyjs",
+  "version": "1.0.0",
+  "description": "simple zesty app",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "webpack --mode production --module-bind js=babel-loader",
+    "dev": "webpack --mode development --module-bind js=babel-loader",
+    "start": "webpack-dev-server --mode development --watch --progress --color --inline --content-base dist/ --history-api-fallback"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/m41na/zestyjs.git"
+  },
+  "keywords": [],
+  "author": "Stephen Maina",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/m41na/zestyjs/issues"
+  },
+  "homepage": "https://github.com/m41na/zestyjs#readme",
+  "devDependencies": {
+    "babel-core": "^6.26.3",
+    "babel-loader": "^7.1.5",
+    "babel-preset-env": "^1.7.0",
+    "css-loader": "^1.0.0",
+    "file-loader": "^1.1.11",
+    "raw-loader": "^0.5.1",
+    "style-loader": "^0.21.0",
+    "webpack": "^4.16.4",
+    "webpack-cli": "^3.1.0",
+    "webpack-dev-server": "^3.1.5"
+  }
+}
