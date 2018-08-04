@@ -1129,3 +1129,12 @@ class Templr{
         }
     }    
 }
+
+class Bindr{
+
+    constructor(){
+
+    }
+
+    
+}

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>List Items</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+<body>
+    <div id="container">
+        <ul id="list-0" style="border:1px solid red">
+            <li>Bake</li>
+            <li>Roast</li>
+            <li>Poach</li>
+            <li>Fry</li>
+        </ul>
+
+        <ul id="list-1" style="border:1px solid blue">
+            <li class="li-item">{item}</li>
+        </ul>
+
+        <ul id="list-2" style="border:1px solid green">
+            <li class="li-item" data-on-each="style in list">{style}</li>
+        </ul>
+
+        <ul id="list-3" style="border:1px solid yellow" data-at-for="style in list">
+            <li class="li-item" data-t-if="show: {style=='Bake'}">
+                <a href="#" data-at-click="clicked">{style}</a>
+            </li>
+        </ul>
+    </div>
+
+    <script>
+        var items = [{style:'Bake'},{style:'Roast'},{style:'Poach'},{style:'Fry'}];
+        
+        //approach 1 - naive way of baking the model into the DOM
+        function approach1(data, target){
+            let li1 = document.getElementById(target);
+            let tmpl = li1.querySelector(".li-item");
+            tmpl.remove();
+
+            var frag = document.createDocumentFragment();
+            var base = tmpl.outerHTML;
+
+            data.forEach(e=>{
+                var el = htmlToElement(base.replace(/({.*})/, e.style));
+                frag.appendChild(el);
+            });
+            li1.appendChild(frag);
+        }
+
+        approach1(items, "list-1");
+
+        //approach 2 - seperation of model from the DOM -> using callbacks to propagate model changes into the DOM
+        function approach2(observer, target){
+            let li2 = document.getElementById(target);
+            let tmpl = li2.querySelector(".li-item");
+            tmpl.remove();
+            let params = tmpl.dataset['onEach'].split(" in ");
+
+            let frag = document.createDocumentFragment();
+            var base = tmpl.outerHTML.replace(/data-bind-each=".+?"/, "");
+
+            let data = observer.data;
+            data.forEach((e, i)=>{
+                var prop = params[0];
+                var el = htmlToElement(base.replace(/({.*})/, e.style));
+                syncNode(observer, el, data[i], prop);
+                frag.appendChild(el);
+            });
+            li2.appendChild(frag);
+        }
+
+        const observer = Observer(items);
+        approach2(observer, "list-2");
+
+        //-------------------- utils ---------------------//
+        function htmlToElement(html){
+            let template = document.createElement('template');
+            html = html.trim(); //never return a text node of white space
+            template.innerHTML = html;
+            return template.content.firstChild;
+        }
+
+        function isObject(value){
+            return value && typeof value === 'object' && value.constructor == Object;
+        }
+
+        function isArray(value){
+            return value && typeof value === 'object' && value.constructor == Array;
+        }
+
+        function Observer(data){
+            let signals = {};
+
+            function observe(property, signalHandler){
+                if(!signals[property]) signals[property] = []; //if there's no signal on the given property, 
+                //create one and set it to a new array to store the signal handlers
+
+                signals[property].push(signalHandler); //push the signalHandler into the signals array,
+                //which effectively gives us an array of callback functions
+            }
+
+            function notify(signal){
+                if(!signals[signal] || signals[signal].length < 1) return;
+
+                signals[signal].forEach((signalHandler) => signalHandler());
+            }
+
+            function makeReactive(obj, key){
+                let val = obj[key];
+
+                Object.defineProperty(obj, key, {
+                    get(){
+                        return val; //simply return cached value
+                    },
+                    set(newval){
+                        val = newval;  //save the new val
+                        notify(key);    //ignore for now
+                    }
+                });
+            }
+
+            function observeData(obj){
+                for(let key in obj){
+                    if(obj.hasOwnProperty(key)){
+                        let val = obj[key];
+                        if(isObject(val) || isArray(val)){
+                            observeData(val);
+                        }
+                        else{
+                            makeReactive(obj, key);
+                        }
+                    }
+                }
+            }
+
+            observeData(data);
+
+            return {
+                data: data,
+                observe,
+                notify
+            }
+        }
+
+        function syncNode(observer, node, obj, property){
+            //initilaize the node's textContent value with the observed object's property value
+            node.textContent = obj[property];
+            //start observing the property using the observer's 'observe' method
+            observer.observe(property, value => {
+                node.textContent = obj[property] || '';
+            });
+        }
+
+        //approach 3 - trying to tweak approach 2
+        function approach3(observer, target){
+            let li3 = document.getElementById(target);
+            let tmpl = li3.innerHTML;
+            while(li3.firstChild){
+                li3.removeChild(li3.firstChild);
+            }
+            let params = li3.dataset['atFor'].split(" in ");
+
+            let frag = document.createDocumentFragment();
+
+            let data = observer.data;
+            data.forEach((e, i)=>{
+                var prop = params[0];
+                var el = htmlToElement(tmpl.replace(/(#{.*})/, e.style));
+                syncNode(observer, el, data[i], prop);
+                frag.appendChild(el);
+            });
+            li3.appendChild(frag);
+        }
+
+        approach3(observer, "list-3");
+    </script>
+</body>
+
+</html>
