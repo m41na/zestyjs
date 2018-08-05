@@ -1,6 +1,0 @@
-class Bindr{
-
-    constructor(){
-
-    }    
-}

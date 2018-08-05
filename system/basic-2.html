@@ -38,7 +38,15 @@
     </tempate>
 
     <script>
-        var items = [{ style: 'Bake' }, { style: 'Roast' }, { style: 'Poach' }, { style: 'Fry' }];
+        var items = [{
+            style: 'Bake'
+        }, {
+            style: 'Roast'
+        }, {
+            style: 'Poach'
+        }, {
+            style: 'Fry'
+        }];
 
         //approach 1 - naive way of baking the model into the DOM
         function approach1(data, target) {
@@ -122,8 +130,8 @@
                         return val; //simply return cached value
                     },
                     set(newval) {
-                        val = newval;  //save the new val
-                        notify(key);    //ignore for now
+                        val = newval; //save the new val
+                        notify(key); //ignore for now
                     }
                 });
             }
@@ -134,8 +142,7 @@
                         let val = obj[key];
                         if (isObject(val) || isArray(val)) {
                             observeData(val);
-                        }
-                        else {
+                        } else {
                             makeReactive(obj, key);
                         }
                     }
@@ -162,40 +169,39 @@
 
         //idea for approach 3 - nesting DOM in functions
         function approach3() {
-            return function(context) {
+            return function (context) {
                 return {
                     open: `<ul style="border:1px solid yellow" data-at-for="style in list">`,
-                    elements: context.data.map((data, index)=>{   
+                    elements: context.data.map((data, index) => {
                         let key = 'style';
                         let value = data[key];
-                        return function(){
-                            if(eval("value=='Bake'")){
+                        return function () {
+                            if (eval("value=='Bake'")) {
                                 return {
                                     open: `<li class="li-item" data-at-if="style=='Bake'" style="color:green">`,
                                     elements: [
-                                        function(){
+                                        function () {
                                             return {
                                                 open: `<a href="#" data-at-click="clicked">`,
                                                 text: `${value}`,
                                                 close: `</a>`
                                             }
                                         }
-                                    ],                                        
+                                    ],
                                     close: `</li> `
                                 }
-                            }
-                            else{
+                            } else {
                                 return {
                                     open: `<li class="li-item" data-at-else style="color:red">`,
                                     elements: [
-                                        function(){
+                                        function () {
                                             return {
                                                 open: `<a href="#" data-at-click="clicked">`,
                                                 text: `${value}`,
                                                 close: `</a>`
                                             }
                                         }
-                                    ],                                        
+                                    ],
                                     close: `</li> `
                                 }
                             }
@@ -207,20 +213,20 @@
         }
 
         let markup = "";
-        function renderApproach3(element){
+
+        function renderApproach3(element) {
             markup += element.open;
             let elements = element.elements;
-            if(elements){
-                for(let el in elements)
-                renderApproach3(elements[el]());
-            }
-            else{
+            if (elements) {
+                for (let el in elements)
+                    renderApproach3(elements[el]());
+            } else {
                 markup += element.text;
             }
             markup += element.close;
         }
 
-        function toDOMApproach3(target){
+        function toDOMApproach3(target) {
             renderApproach3(approach3()(observer));
             console.log(markup);
             let template = htmlToElement(markup);
@@ -232,40 +238,132 @@
         toDOMApproach3("list-3");
 
         //approach 4 - pushing approach 3 further -> using classes to wrap elements
-        class ElNode{
+        class ElNode {
 
-            constructor(template, tag, props){
-                this.template = template;
-                this.tag = tag || "div";
-                this.props = props || [];
-                this.data = {};
-                this.methods = {};
-                this.children = [];
-                this.element;
+            constructor(config) {
+                this.template = config.template;
+                this.selector = config.selector;
+                this.element = config.element;
+                this.props = config.props || [];
+                this.data = config.data || {};
+                this.methods = config.methods || {};
+                this.tag = config.tag || 'div';
+                this.managed = [];
+                this.attributes = [];
                 this.lifecycle = {
                     created: false,
-                    active: false
+                    initialized: false,
+                    mounted: false,
+                    unmounted: false
                 }
             }
-            
-            model(data){
+
+            init(component, element) {
+                if (!this.lifecycle.initialized) {
+                    if (element.hasChildNodes()) {
+                        let child = element.firstChild
+                        let currElement;
+                        while (child !== null) {
+                            let type = child.nodeType;
+                            if (type = Node.TEXT_NODE) {
+                                let evalExpr = /(@{.+?})+/g.test(child.textContent());
+                                if (evalExpr != null) {
+                                    for (let i in evalExpr) {
+                                        let match = evalExpr[i];
+                                        let txtNode = new TextNode({
+                                            element: child,
+                                            expr: match[1]
+                                        });
+                                        if (parent) {
+                                            parent.addChild(txtNode);
+                                        }
+                                        currElement = textNode;
+                                    }
+                                }
+                            }
+                            //check for 'data-at-for
+                            else if (child.hasAttribute('data-at-for')) {
+                                let attrValue = child.dataset['atFor'];
+                                let forParams = /(.+?)(,\s*(.+?))?\sin\s(.+)/g.exec(attrValue);
+                                let forNode = new ForNode({
+                                    key: forParams[1],
+                                    index: forParams[3],
+                                    context: forParams[4],
+                                    element: child
+                                });
+                                if (parent) {
+                                    parent.addChild(forNode);
+                                }
+                                this.init(forNode, child);
+                                currElement = forNode;
+                            }
+                            //check for 'data-at-if
+                            else if (child.hasAttribute('data-at-if')) {
+                                let attrValue = child.dataset['atIF'];
+                                let evalNode = new EvalNode({
+                                    data: this.data,
+                                    element: child,
+                                    expr: attrValue
+                                });
+                                if (parent) {
+                                    parent.addChild(evalNode);
+                                }
+                                this.init(evalNode, child);
+                                currElement = evalNode;
+                            }
+                            //just wrap element
+                            else {
+                                let elNode = new ElNode({
+                                    element: child
+                                });
+                                if (parent) {
+                                    parent.addChild(elNode);
+                                }
+
+                                this.init(evalNode, child);
+                                currElement = elNode;
+                            }
+
+                            //add attributes to element
+                            if (child.hasAttributes()) {
+                                let attrValue = child.dataset['atVal'];
+                                var attrs = child.attributes;
+                                var output = "";
+                                for (var i = attrs.length - 1; i >= 0; i--) {
+                                    currElement.attributes.push({
+                                        name: attrs[i].name,
+                                        value: attrs[i].value
+                                    });
+                                }
+                            }
+                        }
+
+                        //get next child
+                        child = child.nextSibling;
+                    }
+                }
+            }
+
+            model(data) {
                 this.data = data;
             }
 
-            addChild(child){
-                this.children.push(child);
+            addChild(child) {
+                this.managed.push(child);
                 this.update();
             }
 
-            create(){
-                if(!this.lifecycle.created){
-                    if(this.template){
+            create() {
+                if (!this.lifecycle.created) {
+                    if (this.selector) {
+                        this.element = document.querySelector(this.selector);
+                        this.template = this.element.outerHTML;
+                    } else if (this.template) {
                         let template = document.createElement('template');
                         let html = this.template.trim(); //never return a text node of white space
                         template.innerHTML = html;
                         this.element = template.content.firstChild;
-                    }
-                    else{
+                    } else {
                         this.element = document.createElement(this.tag);
                         this.template = this.element.outerHTML;
                     }
@@ -273,21 +371,22 @@
                 }
             }
 
-            update(){
+            update() {
                 this.create();
-                this.children.forEach(e=>e.update());
+                this.children.forEach(e => e.update());
             }
 
-            evaluate(expr){
+            evaluate(expr) {
                 return Function('ctx', '"use strict";return (ctx.' + expr + ')');
             }
 
-            render(){          
+            render() {
                 this.create();
-                let elements = this.children;
-                if(elements){
-                    for(let el in elements){
-                        this.element.appendChild(elements[el].render());
+                this.init();
+                let elements = this.managed;
+                if (elements) {
+                    for (let el in elements) {
+                        elements[el].render();
                     }
                 }
                 return this.element;
@@ -295,40 +394,41 @@
         }
 
         class TextNode extends ElNode {
-            constructor(expr) {
-                super();
-                this.expr = expr;
+            constructor(config) {
+                super(config);
+                this.expr = config.expr;
             }
 
-            create(){
-                if(!this.lifecycle.created){
+            create() {
+                if (!this.lifecycle.created) {
                     this.element = document.createTextNode(this.expr);
                 }
             }
 
-            render(){
+            render() {
                 this.text = this.evaluate(this.expr)(this.data);
                 return this.element;
             }
         }
 
         class ForNode extends ElNode {
-            
-            constructor(key, index, elements) {
-                super();
-                this.key = key;
-                this.index = index;
-                this.model(elements);
+
+            constructor(config) {
+                super(config);
+                this.key = config.key;
+                this.index = config.index;
+                this.context = config.context;
+                this.model(config.data);
             }
 
-            render(){
-                this.data.map((ctx, index)=>{   
+            render() {
+                this.data.map((ctx, index) => {
                     let key = this.key;
                     let ctxdata = {};
                     ctxdata[key] = ctx[key];
                     ctxdata['index'] = index;
-                    let elements = this.children;
-                    for(let i in elements){
+                    let elements = this.managed;
+                    for (let i in elements) {
                         let element = elements[i];
                         element.model(ctxdata);
                         this.element.appendChild(element.render());
@@ -339,21 +439,20 @@
         }
 
         class EvalNode extends ElNode {
-            
-            constructor(expr) {
-                super();
-                this.expr = expr;
+
+            constructor(config) {
+                super(config);
+                this.expr = config.expr;
             }
 
-            render(){
+            render() {
                 let elements = this.children;
                 let isTrue = this.evaluate(this.expr)(this.data);
-                if(isTrue){
+                if (isTrue) {
                     let el = elements[0];
                     el.model(this.data);
                     this.element.appendChild(el.render());
-                }
-                else{
+                } else {
                     let el = elements[1];
                     el.model(this.data);
                     this.element.appendChild(el.render());
@@ -361,33 +460,19 @@
                 return this.element;
             }
         }
-        
-        function approach4(context) {
-            let listEl = new ElNode(`<ul style="border:1px solid yellow" data-at-for="style in list"></ul>`);
-            let forEl = new ForNode('style', 'index', context.data);
-            let evalEl = new EvalNode("style=='Bake'");
-            
-            let ifNode = new ElNode(`<li class="li-item" data-at-if="style=='Bake'" style="color:green"></li>`);
-            let ifLinkNode = new ElNode(`<a href="#" data-at-click="clicked"></a>`);
-            ifLinkNode.addChild(new TextNode(`style`));
-            ifNode.addChild(ifLinkNode);   
-            evalEl.addChild(ifNode);            
 
-            let elseNode = new ElNode(`<li class="li-item" data-at-else style="color:red"></li>`);
-            let elseLinkNode = new ElNode(`<a href="#" data-at-click="clicked"></a>`);
-            elseLinkNode.addChild(new TextNode(`style`));
-            elseNode.addChild(elseLinkNode);
-            evalEl.addChild(elseNode);
-
-            forEl.addChild(evalEl);
-            listEl.addChild(forEl);
-
-            return listEl;
+        function approach4(target, data){
+            let tmpl = document.querySelector(target);
+            tmpl.remove();
+            let node = new ElNode({
+                element: tmpl.firstElementChild,
+                data: data
+            });
+            return node;
         }
 
-        function toDOMApproach4(target, data){
-            let component = approach4(data);
-            component.model(data);
+        function toDOMApproach4(target, data) {
+            let component = approach4(target, data);
             let element = component.render();
 
             let domElement = document.querySelector(target);
@@ -395,71 +480,6 @@
         }
 
         toDOMApproach4("cook-styles2", observer);
-
-        //approach 5 - pushing approach 5 further -> using DOM to create Model-to-DOM mapping
-        function approach5(observer, target) {
-            let template = document.getElementById(target);
-            template.remove();
-            let element = template.firstElementChild;
-            let tree = walkElement(element, {});
-
-            document.querySelector('cook-styles').replaceWith(element);
-        }
-
-        approach5(observer, "list-3");
-
-        //-------------------- utils ---------------------//
-        function walkElement(element, tree) {
-            tree[element.tagName] = {tag: element.tagName};
-            tree.nodes = [];
-            if (element.hasAttribute("data-at-if")) {
-                let expr = element.dataset['atIf'];
-                tree.nodes.push(function (ctx) {
-                    if (eval(expr)) {
-                        tree[element.tagName] = element;
-                    }
-                });
-            }
-            else if(element.hasAttribute("data-at-for")){
-                let expr = element.dataset['atFor'];
-                tree.nodes.push(function(ctx){
-                    let params = element.dataset['atFor'].split(" in ");
-                    ctx.forEach((e, i) => {
-                        var prop = params[0];
-                        var el = htmlToElement(tmpl.replace(/(#{.*})/, e.style));
-                        syncNode(observer, el, data[i], prop);
-                        frag.appendChild(el);
-                    });
-                    element.appendChild(frag);
-                });
-            }
-            else {
-                //tree[element.tagName] = walkElements(child, {});
-                console.log('not sure what to do with this at the moment. ', element.tagName);
-            }
-
-            if (element.hasChildNodes()) {
-                for (var child = element.firstChild; child !== null; child = child.nextSibling) {
-                    let nodeType = child.nodeType;
-                    if (child.nodeType == Node.TEXT_NODE) {
-                        let text = child.textContent;
-                        if (/@{.+}/.test(text)) {
-                            tree.nodes.push(function (ctx, param) {
-                                text = text.replace(/(@{.+})/, ctx[param]);
-                                child.textContent = text;
-                                return child;
-                            });
-                        }
-                    }
-                    else {
-                        tree.nodes.push(walkElement(child, {}));
-                    }
-                }
-            }
-            else {
-                return tree;
-            }
-        }
     </script>
 </body>
 
