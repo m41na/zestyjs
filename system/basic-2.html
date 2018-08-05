@@ -234,28 +234,22 @@
         //approach 4 - pushing approach 3 further -> using classes to wrap elements
         class ElNode{
 
-            constructor(open, close){
-                this.open = open;
-                this.close = close;
-                this.data;
-                this.children;
+            constructor(template, tag, props){
+                this.template = template;
+                this.tag = tag || "div";
+                this.props = props || [];
+                this.data = {};
+                this.methods = {};
+                this.children = [];
                 this.element;
-                this.active = false;
+                this.lifecycle = {
+                    created: false,
+                    active: false
+                }
             }
             
             model(data){
                 this.data = data;
-                this.update();
-            }
-
-            activate(){
-                this.active = true;
-                this.children.forEach(e=>e.activate());
-            }
-
-            passivate(){
-                this.active = false;
-                this.children.forEach(e=>e.passivate());
             }
 
             addChild(child){
@@ -263,37 +257,58 @@
                 this.update();
             }
 
-            render(){
-                let markup = this.open;
-                let elements = this.children;
-                if(elements){
-                    for(let el in elements)
-                    markup += (elements[el].render());
+            create(){
+                if(!this.lifecycle.created){
+                    if(this.template){
+                        let template = document.createElement('template');
+                        let html = this.template.trim(); //never return a text node of white space
+                        template.innerHTML = html;
+                        this.element = template.content.firstChild;
+                    }
+                    else{
+                        this.element = document.createElement(this.tag);
+                        this.template = this.element.outerHTML;
+                    }
+                    this.lifecycle.created = true;
                 }
-                else{
-                    markup += this.text;
-                }
-                markup += this.close;
-                //mark as active
-                this.activate();
-                return markup;
             }
 
             update(){
-                if(this.active){
-                    let template = document.createElement('template');
-                    html = html.trim(); //never return a text node of white space
-                    template.innerHTML = html;
-                    this.element = template.content.firstChild;
-                    this.children.forEach(e=>e.update());
+                this.create();
+                this.children.forEach(e=>e.update());
+            }
+
+            evaluate(expr){
+                return Function('ctx', '"use strict";return (ctx.' + expr + ')');
+            }
+
+            render(){          
+                this.create();
+                let elements = this.children;
+                if(elements){
+                    for(let el in elements){
+                        this.element.appendChild(elements[el].render());
+                    }
                 }
+                return this.element;
             }
         }
 
         class TextNode extends ElNode {
-            constructor(text, open, close) {
-                super(open, close);
-                this.model(text);
+            constructor(expr) {
+                super();
+                this.expr = expr;
+            }
+
+            create(){
+                if(!this.lifecycle.created){
+                    this.element = document.createTextNode(this.expr);
+                }
+            }
+
+            render(){
+                this.text = this.evaluate(this.expr)(this.data);
+                return this.element;
             }
         }
 
@@ -301,9 +316,25 @@
             
             constructor(key, index, elements) {
                 super();
-                this.key;
-                this.index;
+                this.key = key;
+                this.index = index;
                 this.model(elements);
+            }
+
+            render(){
+                this.data.map((ctx, index)=>{   
+                    let key = this.key;
+                    let ctxdata = {};
+                    ctxdata[key] = ctx[key];
+                    ctxdata['index'] = index;
+                    let elements = this.children;
+                    for(let i in elements){
+                        let element = elements[i];
+                        element.model(ctxdata);
+                        this.element.appendChild(element.render());
+                    }
+                });
+                return this.element;
             }
         }
 
@@ -314,47 +345,56 @@
                 this.expr = expr;
             }
 
-            addOption(child){
-                super.addChild(this);
+            render(){
+                let elements = this.children;
+                let isTrue = this.evaluate(this.expr)(this.data);
+                if(isTrue){
+                    let el = elements[0];
+                    el.model(this.data);
+                    this.element.appendChild(el.render());
+                }
+                else{
+                    let el = elements[1];
+                    el.model(this.data);
+                    this.element.appendChild(el.render());
+                }
+                return this.element;
             }
         }
         
-        function approach4() {
-            let ListEl = new ElNode(`<ul style="border:1px solid yellow" data-at-for="style in list">`,`</ul>`);
+        function approach4(context) {
+            let listEl = new ElNode(`<ul style="border:1px solid yellow" data-at-for="style in list"></ul>`);
             let forEl = new ForNode('style', 'index', context.data);
-            let evalEl = new EvalEl("value=='Bake'")
+            let evalEl = new EvalNode("style=='Bake'");
             
-            let ifNode = new ElNode(`<li class="li-item" data-at-if="style=='Bake'" style="color:green">`, `</li>`);
-            ifNode.addChild(new TextNode(`${value}`, `<a href="#" data-at-click="clicked">`, `</a>`));            
+            let ifNode = new ElNode(`<li class="li-item" data-at-if="style=='Bake'" style="color:green"></li>`);
+            let ifLinkNode = new ElNode(`<a href="#" data-at-click="clicked"></a>`);
+            ifLinkNode.addChild(new TextNode(`style`));
+            ifNode.addChild(ifLinkNode);   
             evalEl.addChild(ifNode);            
 
-            let elseNode = new ElNode(`<li class="li-item" data-at-else style="color:red">`, `</li>`);
-            elseNode.addChild(new TextNode(`${value}`, `<a href="#" data-at-click="clicked">`, `</a>`));            
+            let elseNode = new ElNode(`<li class="li-item" data-at-else style="color:red"></li>`);
+            let elseLinkNode = new ElNode(`<a href="#" data-at-click="clicked"></a>`);
+            elseLinkNode.addChild(new TextNode(`style`));
+            elseNode.addChild(elseLinkNode);
             evalEl.addChild(elseNode);
 
-            forEl.addChild(elseNode);
-            ListEl.addChild(forEl);
+            forEl.addChild(evalEl);
+            listEl.addChild(forEl);
 
             return listEl;
         }
 
-        function renderApproach4(data){
-            let component = approach4();
+        function toDOMApproach4(target, data){
+            let component = approach4(data);
             component.model(data);
-            component.activate();
-            return component.render();
-        }
-
-        function toDOMApproach4(target){
-            let markup = renderApproach4(observer);
-            console.log(markup);
-            let template = htmlToElement(markup);
+            let element = component.render();
 
             let domElement = document.querySelector(target);
-            domElement.replaceWith(template)
+            domElement.replaceWith(element);
         }
 
-        toDOMApproach4("cook-styles2");
+        toDOMApproach4("cook-styles2", observer);
 
         //approach 5 - pushing approach 5 further -> using DOM to create Model-to-DOM mapping
         function approach5(observer, target) {
