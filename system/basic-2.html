@@ -29,13 +29,37 @@
         <cook-styles2></cook-styles2>
     </div>
 
-    <tempate id="list-3">
+    <template id="list-3">
         <ul style="border:1px solid yellow" data-at-for="style in list">
             <li class="li-item" data-at-if="style=='Bake'">
                 <a href="#" data-at-click="clicked">@{style}</a>
             </li>
         </ul>
-    </tempate>
+    </template>
+
+    <template id="list-4">
+        <div>
+            <p>Listing</p>
+            <ul style="border:1px solid yellow">
+                <li class="li-item" data-on-for="style, index in list">
+                    <span data-on-if="{show: style=='Bake'}" data-on-prop="index + 1" style="color:red">
+                        <a href="#" data-on-event="{click: clicked}">@{style}</a>
+                    </span>
+                    <span data-on-else data-on-prop="index + 1" style="color:green">
+                        <a href="#" data-on-event="{hover: hovering}">@{style}</a>
+                    </span>
+                </li>
+            </ul>
+        </div>
+    </template>
+
+    <template id="list-5">
+        <ul style="border:1px solid yellow" data-at-for="style in list">
+            <li class="li-item" data-at-if="style=='Bake'">
+                <a href="#" data-at-click="clicked">@{style}</a>
+            </li>
+        </ul>
+    </template>
 
     <script>
         var items = [{
@@ -47,6 +71,36 @@
         }, {
             style: 'Fry'
         }];
+
+        //utility method - resolve string expressions
+        function evalWithContext(expr) {
+            return function (ctx) {
+                let params = Object.keys(ctx).map(e => {
+                    return {
+                        param: e,
+                        value: ctx[e]
+                    }
+                });
+                let arg_names = params.map(e => e.param).reduce((acc, curr) => {
+                    return acc += (", " + curr)
+                }, "");
+                let arg_values = params.map(e => e.value);
+                let function_body = "return function(expr" + arg_names + "){ return " + expr + ";}";
+                let callback = new Function(function_body);
+                return callback().apply(ctx, [expr].concat(arg_values));
+            }
+        }
+
+        var ex_expr = "data.curr>10 && data.min==10";
+        var ex_obj = {
+            data: {
+                min: 10,
+                max: 20,
+                curr: 12
+            },
+            music: ['jams', 'beats']
+        };
+        console.log(evalWithContext(ex_expr)(ex_obj));
 
         //approach 1 - naive way of baking the model into the DOM
         function approach1(data, target) {
@@ -237,7 +291,110 @@
 
         toDOMApproach3("list-3");
 
-        //approach 4 - pushing approach 3 further -> using classes to wrap elements
+        //approach 4 - automating approach 3 -> building up the tree recursively
+        function mirrorDOM(node, d, w) {
+            let obj = {};
+            obj['element'] = node;
+            obj['bearing'] = `${d},${w}`;
+            obj['handlers'] = {};
+            if (node.nodeType === 3) {
+                let textVal = node.textContent;
+                let expr_regex = /@\{(.+?)\}/g;
+                let groups = expr_regex.exec(textVal);
+                if (groups != null) {
+                    obj['resolve'] = groups[1];
+                }
+            } else if (node.hasAttributes()) {
+                obj.attributes = [];
+                var attrs = node.attributes;
+                for (var i = attrs.length - 1; i >= 0; i--) {
+                    var attrName = attrs[i].name;
+                    var attrVal = attrs[i].value;
+                    if (attrName === 'data-on-for') {
+                        var for_reg = /(.+?)(,\s*?(.+?))?\s*in\s*(.+)/g;
+                        let groups = for_reg.exec(attrVal);
+                        if (groups != null) {
+                            obj.attributes.push({
+                                name: attrName,
+                                value: {
+                                    key: groups[1],
+                                    index: groups[3],
+                                    context: groups[4]
+                                }
+                            });
+                            continue;
+                        }
+                    }
+                    if (attrName === 'data-on-if') {
+                        var if_reg = /(\{(.+?)\s*:\s*(.+?)\})/g;
+                        let groups = if_reg.exec(attrVal);
+                        if (groups != null) {
+                            obj.attributes.push({
+                                name: attrName,
+                                value: {
+                                    handler: groups[1],
+                                    expr: groups[2]
+                                }
+                            });
+                        }
+                    }
+                    if (attrName === 'data-on-prop') {
+                        obj.attributes.push({
+                            name: attrName,
+                            value: {
+                                expr: attrVal
+                            }
+                        });
+                    }
+                    if (attrName === 'data-on-bind') {
+                        obj.attributes.push({
+                            name: attrName,
+                            value: {
+                                expr: attrVal
+                            }
+                        });
+                    }
+                    if (attrName === 'data-on-event') {
+                        var event_reg = /(\{(.+?)\s*:\s*(.+?)\})/g;
+                        let groups = event_reg.exec(attrVal);
+                        if (groups != null) {
+                            obj.attributes.push({
+                                name: attrName,
+                                value: {
+                                    event: groups[1],
+                                    handler: groups[2]
+                                }
+                            });
+                        }
+                    }
+                    obj.attributes.push({
+                        name: attrName,
+                        value: attrVal
+                    });
+                }
+            }
+            if (node.hasChildNodes()) {
+                obj.children = [];
+                let child = node.firstChild;
+                while (child != null) {
+                    obj.children.push(mirrorDOM(child, d + 1, w));
+                    child = child.nextSibling;
+                    w++;
+                }
+            }
+
+            return obj;
+        }
+
+        function approach4(target) {
+            let node = document.getElementById(target);
+            let res = mirrorDOM(node.content.firstElementChild, 0, 0);
+            console.log(res);
+        }
+
+        approach4("list-4");
+
+        //approach 5 - pushing approach 4 further -> using classes to wrap elements
         class ElNode {
 
             constructor(config) {
@@ -258,15 +415,15 @@
                 }
             }
 
-            init(component, element) {
+            init() {
                 if (!this.lifecycle.initialized) {
-                    if (element.hasChildNodes()) {
-                        let child = element.firstChild
+                    if (this.element.hasChildNodes()) {
+                        let child = this.element.firstChild
                         let currElement;
                         while (child !== null) {
                             let type = child.nodeType;
-                            if (type = Node.TEXT_NODE) {
-                                let evalExpr = /(@{.+?})+/g.test(child.textContent());
+                            if (type === Node.TEXT_NODE) {
+                                let evalExpr = /(@{.+?})+/g.exec(child.textContent);
                                 if (evalExpr != null) {
                                     for (let i in evalExpr) {
                                         let match = evalExpr[i];
@@ -274,9 +431,9 @@
                                             element: child,
                                             expr: match[1]
                                         });
-                                        if (parent) {
-                                            parent.addChild(txtNode);
-                                        }
+
+                                        this.addChild(txtNode);
+                                        textNode.init();
                                         currElement = textNode;
                                     }
                                 }
@@ -291,24 +448,22 @@
                                     context: forParams[4],
                                     element: child
                                 });
-                                if (parent) {
-                                    parent.addChild(forNode);
-                                }
-                                this.init(forNode, child);
+
+                                this.addChild(forNode);
+                                forNode.init();
                                 currElement = forNode;
                             }
                             //check for 'data-at-if
                             else if (child.hasAttribute('data-at-if')) {
-                                let attrValue = child.dataset['atIF'];
+                                let attrValue = child.dataset.atIF;
                                 let evalNode = new EvalNode({
                                     data: this.data,
                                     element: child,
                                     expr: attrValue
                                 });
-                                if (parent) {
-                                    parent.addChild(evalNode);
-                                }
-                                this.init(evalNode, child);
+
+                                this.addChild(evalNode);
+                                evalNode.init();
                                 currElement = evalNode;
                             }
                             //just wrap element
@@ -316,17 +471,15 @@
                                 let elNode = new ElNode({
                                     element: child
                                 });
-                                if (parent) {
-                                    parent.addChild(elNode);
-                                }
 
-                                this.init(evalNode, child);
+                                this.addChild(elNode);
+                                evalNode.init();
                                 currElement = elNode;
                             }
 
                             //add attributes to element
-                            if (child.hasAttributes()) {
-                                let attrValue = child.dataset['atVal'];
+                            if (type != Node.TEXT_NODE && child.hasAttributes()) {
+                                let attrValue = child.dataset.atVal;
                                 var attrs = child.attributes;
                                 var output = "";
                                 for (var i = attrs.length - 1; i >= 0; i--) {
@@ -336,10 +489,10 @@
                                     });
                                 }
                             }
-                        }
 
-                        //get next child
-                        child = child.nextSibling;
+                            //get next child
+                            child = child.nextSibling;
+                        }
                     }
                 }
             }
@@ -355,7 +508,9 @@
 
             create() {
                 if (!this.lifecycle.created) {
-                    if (this.selector) {
+                    if (this.element) {
+                        this.template = this.element.outerHTML;
+                    } else if (this.selector) {
                         this.element = document.querySelector(this.selector);
                         this.template = this.element.outerHTML;
                     } else if (this.template) {
@@ -382,7 +537,7 @@
 
             render() {
                 this.create();
-                this.init();
+                this.init(this, this.element);
                 let elements = this.managed;
                 if (elements) {
                     for (let el in elements) {
@@ -461,7 +616,7 @@
             }
         }
 
-        function approach4(target, data){
+        function approach5(target, data) {
             let tmpl = document.querySelector(target);
             tmpl.remove();
             let node = new ElNode({
@@ -471,15 +626,15 @@
             return node;
         }
 
-        function toDOMApproach4(target, data) {
-            let component = approach4(target, data);
+        function toDOMApproach5(target, data) {
+            let component = approach5(target, data);
             let element = component.render();
 
-            let domElement = document.querySelector(target);
+            let domElement = document.querySelector("cook-styles2");
             domElement.replaceWith(element);
         }
 
-        toDOMApproach4("cook-styles2", observer);
+        toDOMApproach5("#list-5", observer);
     </script>
 </body>
 
