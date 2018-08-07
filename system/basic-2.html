@@ -72,36 +72,6 @@
             style: 'Fry'
         }];
 
-        //utility method - resolve string expressions
-        function evalWithContext(expr) {
-            return function (ctx) {
-                let params = Object.keys(ctx).map(e => {
-                    return {
-                        param: e,
-                        value: ctx[e]
-                    }
-                });
-                let arg_names = params.map(e => e.param).reduce((acc, curr) => {
-                    return acc += (", " + curr)
-                }, "");
-                let arg_values = params.map(e => e.value);
-                let function_body = "return function(expr" + arg_names + "){ return " + expr + ";}";
-                let callback = new Function(function_body);
-                return callback().apply(ctx, [expr].concat(arg_values));
-            }
-        }
-
-        var ex_expr = "data.curr>10 && data.min==10";
-        var ex_obj = {
-            data: {
-                min: 10,
-                max: 20,
-                curr: 12
-            },
-            music: ['jams', 'beats']
-        };
-        console.log(evalWithContext(ex_expr)(ex_obj));
-
         //approach 1 - naive way of baking the model into the DOM
         function approach1(data, target) {
             let li1 = document.getElementById(target);
@@ -292,17 +262,26 @@
         toDOMApproach3("list-3");
 
         //approach 4 - automating approach 3 -> building up the tree recursively
-        function mirrorDOM(node, d, w) {
+        function mirrorDOM(node) {
             let obj = {};
             obj['element'] = node;
-            obj['bearing'] = `${d},${w}`;
-            obj['handlers'] = {};
+            obj['template'] = node.outerHTML;
+            obj['selector'] = '';
+            obj['methods'] = {};
+            obj['data'] = {};
+            obj['resolvers'] = [];
+            obj['next'] = null;
+            obj['prev'] = null;
+            obj['parent'] = null;
+            obj['childrenCount'] = function () {
+                return (this.children) ? this.children.length : null;
+            };
             if (node.nodeType === 3) {
                 let textVal = node.textContent;
                 let expr_regex = /@\{(.+?)\}/g;
                 let groups = expr_regex.exec(textVal);
                 if (groups != null) {
-                    obj['resolve'] = groups[1];
+                    obj.resolvers.push(evalWithContext(groups[1]));
                 }
             } else if (node.hasAttributes()) {
                 obj.attributes = [];
@@ -310,43 +289,43 @@
                 for (var i = attrs.length - 1; i >= 0; i--) {
                     var attrName = attrs[i].name;
                     var attrVal = attrs[i].value;
+
                     if (attrName === 'data-on-for') {
+                        obj['type'] = 'for';
                         var for_reg = /(.+?)(,\s*?(.+?))?\s*in\s*(.+)/g;
                         let groups = for_reg.exec(attrVal);
                         if (groups != null) {
-                            obj.attributes.push({
-                                name: attrName,
-                                value: {
-                                    key: groups[1],
-                                    index: groups[3],
-                                    context: groups[4]
-                                }
-                            });
-                            continue;
+                            obj['for_key'] = groups[1];
+                            obj['for_index'] = groups[3];
+                            obj['for_context'] = groups[4];
                         }
                     }
                     if (attrName === 'data-on-if') {
+                        obj['type'] = 'if';
                         var if_reg = /(\{(.+?)\s*:\s*(.+?)\})/g;
                         let groups = if_reg.exec(attrVal);
                         if (groups != null) {
-                            obj.attributes.push({
-                                name: attrName,
-                                value: {
-                                    handler: groups[1],
-                                    expr: groups[2]
-                                }
-                            });
+                            obj['if_true'] = groups[1];
+                            obj['if_expr'] = groups[2];
                         }
                     }
+                    if (attrName === 'data-on-elif') {
+                        obj['type'] = 'elif';
+                        var elif_reg = /(\{(.+?)\s*:\s*(.+?)\})/g;
+                        let groups = elif_reg.exec(attrVal);
+                        if (groups != null) {
+                            obj['elif_true'] = groups[1];
+                            obj['eif_expr'] = groups[2];
+                        }
+                    }
+                    if (attrName === 'data-on-else') {
+                        obj['type'] = 'else';
+                    }
                     if (attrName === 'data-on-prop') {
-                        obj.attributes.push({
-                            name: attrName,
-                            value: {
-                                expr: attrVal
-                            }
-                        });
+                        obj.resolvers.push(evalWithContext(attrVal));
                     }
                     if (attrName === 'data-on-bind') {
+                        obj['type'] = 'bind';
                         obj.attributes.push({
                             name: attrName,
                             value: {
@@ -355,6 +334,7 @@
                         });
                     }
                     if (attrName === 'data-on-event') {
+                        obj['type'] = 'event';
                         var event_reg = /(\{(.+?)\s*:\s*(.+?)\})/g;
                         let groups = event_reg.exec(attrVal);
                         if (groups != null) {
@@ -377,264 +357,144 @@
                 obj.children = [];
                 let child = node.firstChild;
                 while (child != null) {
-                    obj.children.push(mirrorDOM(child, d + 1, w));
+                    let childObj = mirrorDOM(child);
+                    //set parent
+                    childObj.parent = obj;
+                    //set next and prev
+                    if (obj.children.length > 0) {
+                        let ref = obj.children[obj.children.length - 1];
+                        ref.next = childObj;
+                        childObj.prev = ref;
+                    }
+                    //add child and move on
+                    obj.children.push(childObj);
                     child = child.nextSibling;
-                    w++;
                 }
             }
 
             return obj;
         }
 
+        function expandElements(config) {
+            return function(context){
+                let type = config.type;
+                config.data = context;
+                switch (type) {
+                    //check for 'data-at-for
+                    case 'for': {
+                        let newNodes;
+                        config.resolvers.push(function () {
+                            let nodes = config.data.map((ctx, index) => {
+                                let key = config.for_key;
+                                let ctxdata = {};
+                                ctxdata[key] = ctx[key];
+                                if (config.for_index) {
+                                    ctxdata[config.for_index] = index;
+                                }
+                                //create new element
+                                let template = document.createElement('template');
+                                let html = config.template
+                                template.innerHTML = html;
+                                element = template.content.firstChild;
+                                let tree = mirrorDOM(element);
+                                newNodes = expandElements(tree);
+                            });
+                            //insert these nodes into DOM
+                            config.children = newNodes;
+                            config.children.forEach(e=>e.parent = config);
+                        })
+                        break;
+                    }
+                    //check for 'data-at-if
+                    case 'if': {
+                        config.resolvers.push(function () {
+                            let isTrue = evalWithContext(config.if_expr)(config.data);
+                            config['show_if_true'] = isTrue;
+                        });
+                        break;
+                    }
+                    case 'elif': {
+                        config.resolvers.push(function () {
+                            let isTrue = evalWithContext(config.elif_expr)(config.data);
+                            config['show_if_true'] = isTrue;
+                            let ref = config;
+                            while (config.show) {
+                                if (config.prev.show) {
+                                    isTrue = false;
+                                    config.element.style.display = none;
+                                }
+                                if (config.prev.type == 'if') {
+                                    break;
+                                }
+                                config = config.prev;
+                            }
+                        });
+                        break;
+                    }
+                    case 'else': {
+                        config.resolvers.push(function () {
+                            config['show_if_true'] = true;
+                            let ref = config;
+                            while (config.show) {
+                                if (config.prev.show) {
+                                    isTrue = false;
+                                    config.element.style.display = none;
+                                }
+                                if (config.prev.type == 'if') {
+                                    break;
+                                }
+                                config = config.prev;
+                            }
+                        });
+                        break;
+                    }
+                    //just wrap element
+                    default: {
+                        break;
+                    }
+                }
+            }
+        }
+
         function approach4(target) {
             let node = document.getElementById(target);
             let res = mirrorDOM(node.content.firstElementChild, 0, 0);
             console.log(res);
+            expandElements(res)(observer);
+            document.querySelector("cook-styles2").replaceWith(res.element);
         }
 
         approach4("list-4");
 
-        //approach 5 - pushing approach 4 further -> using classes to wrap elements
-        class ElNode {
-
-            constructor(config) {
-                this.template = config.template;
-                this.selector = config.selector;
-                this.element = config.element;
-                this.props = config.props || [];
-                this.data = config.data || {};
-                this.methods = config.methods || {};
-                this.tag = config.tag || 'div';
-                this.managed = [];
-                this.attributes = [];
-                this.lifecycle = {
-                    created: false,
-                    initialized: false,
-                    mounted: false,
-                    unmounted: false
-                }
-            }
-
-            init() {
-                if (!this.lifecycle.initialized) {
-                    if (this.element.hasChildNodes()) {
-                        let child = this.element.firstChild
-                        let currElement;
-                        while (child !== null) {
-                            let type = child.nodeType;
-                            if (type === Node.TEXT_NODE) {
-                                let evalExpr = /(@{.+?})+/g.exec(child.textContent);
-                                if (evalExpr != null) {
-                                    for (let i in evalExpr) {
-                                        let match = evalExpr[i];
-                                        let txtNode = new TextNode({
-                                            element: child,
-                                            expr: match[1]
-                                        });
-
-                                        this.addChild(txtNode);
-                                        textNode.init();
-                                        currElement = textNode;
-                                    }
-                                }
-                            }
-                            //check for 'data-at-for
-                            else if (child.hasAttribute('data-at-for')) {
-                                let attrValue = child.dataset['atFor'];
-                                let forParams = /(.+?)(,\s*(.+?))?\sin\s(.+)/g.exec(attrValue);
-                                let forNode = new ForNode({
-                                    key: forParams[1],
-                                    index: forParams[3],
-                                    context: forParams[4],
-                                    element: child
-                                });
-
-                                this.addChild(forNode);
-                                forNode.init();
-                                currElement = forNode;
-                            }
-                            //check for 'data-at-if
-                            else if (child.hasAttribute('data-at-if')) {
-                                let attrValue = child.dataset.atIF;
-                                let evalNode = new EvalNode({
-                                    data: this.data,
-                                    element: child,
-                                    expr: attrValue
-                                });
-
-                                this.addChild(evalNode);
-                                evalNode.init();
-                                currElement = evalNode;
-                            }
-                            //just wrap element
-                            else {
-                                let elNode = new ElNode({
-                                    element: child
-                                });
-
-                                this.addChild(elNode);
-                                evalNode.init();
-                                currElement = elNode;
-                            }
-
-                            //add attributes to element
-                            if (type != Node.TEXT_NODE && child.hasAttributes()) {
-                                let attrValue = child.dataset.atVal;
-                                var attrs = child.attributes;
-                                var output = "";
-                                for (var i = attrs.length - 1; i >= 0; i--) {
-                                    currElement.attributes.push({
-                                        name: attrs[i].name,
-                                        value: attrs[i].value
-                                    });
-                                }
-                            }
-
-                            //get next child
-                            child = child.nextSibling;
-                        }
-                    }
-                }
-            }
-
-            model(data) {
-                this.data = data;
-            }
-
-            addChild(child) {
-                this.managed.push(child);
-                this.update();
-            }
-
-            create() {
-                if (!this.lifecycle.created) {
-                    if (this.element) {
-                        this.template = this.element.outerHTML;
-                    } else if (this.selector) {
-                        this.element = document.querySelector(this.selector);
-                        this.template = this.element.outerHTML;
-                    } else if (this.template) {
-                        let template = document.createElement('template');
-                        let html = this.template.trim(); //never return a text node of white space
-                        template.innerHTML = html;
-                        this.element = template.content.firstChild;
-                    } else {
-                        this.element = document.createElement(this.tag);
-                        this.template = this.element.outerHTML;
-                    }
-                    this.lifecycle.created = true;
-                }
-            }
-
-            update() {
-                this.create();
-                this.children.forEach(e => e.update());
-            }
-
-            evaluate(expr) {
-                return Function('ctx', '"use strict";return (ctx.' + expr + ')');
-            }
-
-            render() {
-                this.create();
-                this.init(this, this.element);
-                let elements = this.managed;
-                if (elements) {
-                    for (let el in elements) {
-                        elements[el].render();
-                    }
-                }
-                return this.element;
-            }
-        }
-
-        class TextNode extends ElNode {
-            constructor(config) {
-                super(config);
-                this.expr = config.expr;
-            }
-
-            create() {
-                if (!this.lifecycle.created) {
-                    this.element = document.createTextNode(this.expr);
-                }
-            }
-
-            render() {
-                this.text = this.evaluate(this.expr)(this.data);
-                return this.element;
-            }
-        }
-
-        class ForNode extends ElNode {
-
-            constructor(config) {
-                super(config);
-                this.key = config.key;
-                this.index = config.index;
-                this.context = config.context;
-                this.model(config.data);
-            }
-
-            render() {
-                this.data.map((ctx, index) => {
-                    let key = this.key;
-                    let ctxdata = {};
-                    ctxdata[key] = ctx[key];
-                    ctxdata['index'] = index;
-                    let elements = this.managed;
-                    for (let i in elements) {
-                        let element = elements[i];
-                        element.model(ctxdata);
-                        this.element.appendChild(element.render());
+        //utility method - resolve string expressions
+        function evalWithContext(expr) {
+            return function (ctx) {
+                let params = Object.keys(ctx).map(e => {
+                    return {
+                        param: e,
+                        value: ctx[e]
                     }
                 });
-                return this.element;
+                let arg_names = params.map(e => e.param).reduce((acc, curr) => {
+                    return acc += (", " + curr)
+                }, "");
+                let arg_values = params.map(e => e.value);
+                let function_body = "return function(expr" + arg_names + "){ return " + expr + ";}";
+                let callback = new Function(function_body);
+                return callback().apply(ctx, [expr].concat(arg_values));
             }
         }
 
-        class EvalNode extends ElNode {
-
-            constructor(config) {
-                super(config);
-                this.expr = config.expr;
-            }
-
-            render() {
-                let elements = this.children;
-                let isTrue = this.evaluate(this.expr)(this.data);
-                if (isTrue) {
-                    let el = elements[0];
-                    el.model(this.data);
-                    this.element.appendChild(el.render());
-                } else {
-                    let el = elements[1];
-                    el.model(this.data);
-                    this.element.appendChild(el.render());
-                }
-                return this.element;
-            }
-        }
-
-        function approach5(target, data) {
-            let tmpl = document.querySelector(target);
-            tmpl.remove();
-            let node = new ElNode({
-                element: tmpl.firstElementChild,
-                data: data
-            });
-            return node;
-        }
-
-        function toDOMApproach5(target, data) {
-            let component = approach5(target, data);
-            let element = component.render();
-
-            let domElement = document.querySelector("cook-styles2");
-            domElement.replaceWith(element);
-        }
-
-        toDOMApproach5("#list-5", observer);
+        var ex_expr = "data.curr>10 && data.min==10";
+        var ex_obj = {
+            data: {
+                min: 10,
+                max: 20,
+                curr: 12
+            },
+            music: ['jams', 'beats']
+        };
+        console.log(evalWithContext(ex_expr)(ex_obj));
     </script>
 </body>
 
