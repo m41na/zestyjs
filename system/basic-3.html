@@ -76,12 +76,11 @@
 
             function observeData(obj) {
                 for (let key in obj) {
+                    makeReactive(obj, key);
                     if (obj.hasOwnProperty(key)) {
                         let val = obj[key];
-                        if (isObject(val) || isArray(val)) {
+                        if (isObject(val) || isArray(val)) {                            
                             observeData(val);
-                        } else {
-                            makeReactive(obj, key);
                         }
                     }
                 }
@@ -131,10 +130,26 @@
                 let expr_regex = /@\{(.+?)\}/g;
                 let groups = expr_regex.exec(textVal);
                 if (groups != null) {
+                    obj['pre-render'].push(function(){
+                        return function(){
+                            if(!obj['observed']){
+                                observer.observe(obj.data, obj['render']);
+                                obj['observed'] = true;
+                            }
+                        }
+                    }());
+
                     obj['render'] = function (expr) {
                         return function () {
+                            //pre-render
+                            obj['pre-render'].forEach(e => e.call());
+
+                            //do render
                             let evaled = evalWithContext(expr)(obj.data);
                             node.textContent = textVal.replace(/(@\{.+?\})/g, evaled);
+
+                            //post-render
+                            obj['post-render'].forEach(e => e.call());
                             return obj.element;
                         }
                     }(groups[1]);
@@ -151,10 +166,17 @@
                     if (groups != null) {
                         obj['post-render'].push(function (expr) {
                             return function () {
+                                //pre-render
+                                obj['pre-render'].forEach(e => e.call());
+                                
+                                //do render
                                 let evaled = evalWithContext(expr)(obj.data);
                                 if (obj.element.nodeType == 1 && obj.element.hasAttribute(attrName)) {
                                     obj.element.setAttribute(attrName, attrVal.replace(/(@\{.+?\})/g, evaled));
                                 }
+
+                                //post-render
+                                obj['post-render'].forEach(e => e.call());
                             }
                         }(groups[1]));
                     }
@@ -168,6 +190,10 @@
                         if (groups != null) {
                             obj['render'] = function (key, index, items) {
                                 return function () {
+                                    //pre-render
+                                    obj['pre-render'].forEach(e => e.call());
+
+                                    //do render
                                     let for_ctx = evalWithContext(items)(obj.data);
                                     let frag = document.createDocumentFragment();
                                     for (var i in for_ctx) {
@@ -185,6 +211,7 @@
                                         frag.appendChild(newObj.render());
                                     }
                                     obj.element = frag;
+                                    
                                     //post-render
                                     obj['post-render'].forEach(e => e.call());
                                     //return element
@@ -206,6 +233,10 @@
                                     let evaled = evalWithContext(expr)(obj.data);
                                     obj.parent['if_expr'] = evaled;
                                     if (evaled) {
+                                        //pre-render
+                                        obj['pre-render'].forEach(e => e.call());
+
+                                        //do render
                                         let frag = document.createDocumentFragment();
                                         //create element
                                         let templ = document.createElement('template');
@@ -219,6 +250,7 @@
                                         //invoke handler
                                         let method = new Function('frag', 'return ' + handler + '(frag);');
                                         method(frag.firstElementChild);
+                                        
                                         //post-render
                                         obj['post-render'].forEach(e => e.call());
                                         //return element
@@ -242,6 +274,10 @@
                                     let if_expr = obj.parent['if_expr'];
                                     obj.parent['if_expr'] = !evaled ? if_expr : evaled;
                                     if (evaled) {
+                                        //pre-render
+                                        obj['pre-render'].forEach(e => e.call());
+
+                                        //do render
                                         let frag = document.createDocumentFragment();
                                         //create element
                                         let templ = document.createElement('template');
@@ -255,6 +291,7 @@
                                         //invoke handler
                                         let method = new Function('frag', 'return ' + handler + '(frag);');
                                         method(frag.firstElementChild);
+                                        
                                         //post-render
                                         obj['post-render'].forEach(e => e.call());
                                         //return element
@@ -273,6 +310,10 @@
                             return function () {
                                 let evaled = obj.parent['if_expr'];
                                 if (!evaled) {
+                                    //pre-render
+                                    obj['pre-render'].forEach(e => e.call());
+
+                                    //do render
                                     let frag = document.createDocumentFragment();
                                     //create element
                                     let templ = document.createElement('template');
@@ -283,6 +324,7 @@
                                     frag.appendChild(newObj.render());
                                     //set element value
                                     obj.element = frag;
+
                                     //post-render
                                     obj['post-render'].forEach(e => e.call());
                                     //return element
@@ -295,8 +337,13 @@
                     if (attrName === 'data-on-text') {
                         obj['render'] = function (expr) {
                             return function () {
+                                //pre-render
+                                obj['pre-render'].forEach(e => e.call());
+                                
+                                //do render
                                 let evaled = evalWithContext(expr)(obj.data);
                                 obj.element.append(evaled);
+
                                 //post-render
                                 obj['post-render'].forEach(e => e.call());
                                 return obj.element;
@@ -348,6 +395,10 @@
             }
             if (!obj.render) {
                 obj['render'] = function () {
+                    //pre-render
+                    obj['pre-render'].forEach(e => e.call());
+
+                    //do render
                     if (obj.template && obj.template !== "#text") {
                         let templ = document.createElement('template');
                         templ.innerHTML = obj.template;
@@ -364,6 +415,7 @@
                             }
                         }
                     }
+
                     //post-render
                     obj['post-render'].forEach(e => e.call());
                     return obj.element;
@@ -373,7 +425,8 @@
             return obj;
         }
 
-        //example with approach4   
+        //example with approach5
+        var observer = new Observer({ sports: sports });
 
         function highlight(el) {
             el.style.backgroundColor = 'red';
@@ -396,7 +449,7 @@
             document.querySelector("sports-list").replaceWith(element);
         }
 
-        approach5("sports-template", { sports: sports });
+        approach5("sports-template", observer.data);
     </script>
 </body>
 
