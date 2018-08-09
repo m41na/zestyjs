@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>List Items</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+<body>
+    <div id="container">        
+        <ul class="items-list">
+            <li class="list-item">
+                <span style="color:red;" data-index="0"></span>
+            </li>
+            <li class="list-item">
+                <span style="color:yellow;" data-index="1"></span>
+            </li>
+            <li class="list-item">
+                <span style="color:green;" data-index="2"></span>
+            </li>
+        </ul>
+
+        <select class="items-font">
+            <option data-font="0" value="initial">initial</option>
+            <option data-font="1" value="italic">italic</option>
+            <option data-font="2" value="oblique">oblique</option>
+        </select>
+    </div>
+
+    <script>
+        var data = {font: 'normal', sports: [{ sport: { name: 'Rugby' } }, { sport: { name: 'Soccer' } }, { sport: { name: 'Hockey' } }, { sport: { name: 'Tennis' } }]};
+        let items_list = document.querySelector(".items-list");
+        let font_select = document.querySelector(".items-font");
+
+        //approach 1: firing custom event using DOM
+        //cons - requires DOM events in order to work (tight coupling)
+        function approach1(list){
+            let li = list.firstElementChild;
+            while(li != null){
+                updateNode(li);
+                li.addEventListener('update', function(ev){
+                    updateNode(ev.target);
+                });
+                li = li.nextElementSibling;
+            }
+
+            font_select.addEventListener('change', function(ev){
+                data.font = ev.target.value;
+                let event = new Event('update');
+                let li = list.firstElementChild;
+                while(li != null){
+                    li.dispatchEvent(event);
+                    li = li.nextElementSibling;
+                }
+            });
+
+            function updateNode(e){
+                let span = e.firstElementChild;
+                span.style.fontStyle = data.font;
+                let index = span.dataset.index;
+                span.textContent = data.sports[index].sport.name;
+            }
+        };
+
+        //approach1(items_list);
+
+        //appreach2 - data observer 
+        //pros - decouples model from DOM to a large extent
+        function isObject(value) {
+            return value && typeof value === 'object' && value.constructor == Object;
+        }
+
+        function isArray(value) {
+            return value && typeof value === 'object' && value.constructor == Array;
+        }
+
+        function Observer(data, start) {
+            let signals = {};
+
+            function observe(property, signalHandler) {
+                if (!signals[property]) signals[property] = []; //if there's no signal on the given property, 
+                //create one and set it to a new array to store the signal handlers
+
+                signals[property].push(signalHandler); //push the signalHandler into the signals array,
+                //which effectively gives us an array of callback functions
+            }
+
+            function notify(signal) {
+                if (!signals[signal] || signals[signal].length < 1) return;
+                signals[signal].forEach((signalHandler) => signalHandler());
+            }
+
+            function makeReactive(obj, key) {
+                let val = obj[key];
+                console.log('now observing ', key);
+                Object.defineProperty(obj, key, {
+                    get() {
+                        return val; //simply return cached value
+                    },
+                    set(newval) {
+                        val = newval; //save the new val
+                        notify(key); //ignore for now
+                        console.log('changed detected in ', key);
+                    }
+                });
+            }
+
+            function observeData(obj, start) {
+                for (let key in obj) {
+                    if (obj.hasOwnProperty(key)) {
+                        let prop = (start || '').concat('.').concat(key);
+                        makeReactive(obj, key);
+                        //observe nested object values
+                        let val = obj[key];
+                        if (isObject(val)) {                            
+                            observeData(val, prop);
+                        }
+                        if(isArray(val)){
+                            for(let i = 0; i < val.length; i++){
+                                let index = prop + '.' + key + '[' + i + ']';
+                                if(isObject(val[i])){
+                                    observeData(val[i], index);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            observeData(data, start);
+
+            return {
+                data: data,
+                observe,
+                notify
+            }
+        }
+
+        const observer = new Observer(data, "data");
+
+        function approach2(list) {
+            for(let i = 0; i < list.children.length; i++){
+                let li = list.children[i];
+                updateNode(li);
+                observer.observe('font', function(){
+                    updateNode(li);
+                });
+                observer.observe('name', function(){
+                    updateNode(li);
+                });
+            }
+
+            font_select.addEventListener('change', function(ev){
+                observer.data.font = ev.target.value;
+            });
+
+            function updateNode(e){
+                let span = e.firstElementChild;
+                span.style.fontStyle = data.font;
+                let index = span.dataset.index;
+                span.textContent = data.sports[index].sport.name;
+            }
+        }
+
+        approach2(items_list);
+    </script>
+</body>
+
+</html>

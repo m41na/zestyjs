@@ -30,13 +30,6 @@
         var sports = [{ sport: { name: 'Rugby' } }, { sport: { name: 'Soccer' } }, { sport: { name: 'Hockey' } }, { sport: { name: 'Tennis' } }];
 
         //-------------------- utils ---------------------//
-        function htmlToElement(html) {
-            let template = document.createElement('template');
-            html = html.trim(); //never return a text node of white space
-            template.innerHTML = html;
-            return template.content.firstChild;
-        }
-
         function isObject(value) {
             return value && typeof value === 'object' && value.constructor == Object;
         }
@@ -47,6 +40,7 @@
 
         function Observer(data) {
             let signals = {};
+            let handlers = [];
 
             function observe(property, signalHandler) {
                 if (!signals[property]) signals[property] = []; //if there's no signal on the given property, 
@@ -56,31 +50,50 @@
                 //which effectively gives us an array of callback functions
             }
 
+            function observeAll(signalHandler) {
+                handlers.push(signalHandler);
+            }
+
             function notify(signal) {
                 if (!signals[signal] || signals[signal].length < 1) return;
                 signals[signal].forEach((signalHandler) => signalHandler());
             }
 
+            function notifyAll(signal) {
+                if (handlers.length < 1) return;
+                handlers.forEach((signalHandler) => signalHandler());
+            }
+
             function makeReactive(obj, key) {
                 let val = obj[key];
+                console.log('now observing ', key);
                 Object.defineProperty(obj, key, {
                     get() {
                         return val; //simply return cached value
                     },
                     set(newval) {
                         val = newval; //save the new val
-                        notify(key); //ignore for now
+                        notifyAll(); //ignore for now
+                        console.log('changed detected in ', key);
                     }
                 });
             }
 
             function observeData(obj) {
                 for (let key in obj) {
-                    makeReactive(obj, key);
                     if (obj.hasOwnProperty(key)) {
+                        makeReactive(obj, key);
+                        //observe nested object values
                         let val = obj[key];
-                        if (isObject(val) || isArray(val)) {                            
+                        if (isObject(val)) {                     
                             observeData(val);
+                        }
+                        if(isArray(val)){
+                            for(let i = 0; i < val.length; i++){
+                                if(isObject(val[i])){
+                                    observeData(val[i]);
+                                }
+                            }
                         }
                     }
                 }
@@ -90,18 +103,13 @@
 
             return {
                 data: data,
-                observe,
-                notify
+                observeAll,
+                notifyAll,
+                wrap: function(data){
+                    let obs = new Observer(data);
+                    return obs.data;
+                }
             }
-        }
-
-        function syncNode(observer, node, obj, property) {
-            //initilaize the node's textContent value with the observed object's property value
-            node.textContent = obj[property];
-            //start observing the property using the observer's 'observe' method
-            observer.observe(property, value => {
-                node.textContent = obj[property] || '';
-            });
         }
 
         function evalWithContext(expr) {
@@ -133,7 +141,9 @@
                     obj['pre-render'].push(function(){
                         return function(){
                             if(!obj['observed']){
-                                observer.observe(obj.data, obj['render']);
+                                let observable = new Observer(obj.data);
+                                obj.data = observable.data;
+                                observable.observeAll(obj['render']);
                                 obj['observed'] = true;
                             }
                         }
@@ -188,6 +198,17 @@
                         var for_reg = /(.+?)(,\s*(\b.+?))?\s*in\s*(.+)/g;
                         let groups = for_reg.exec(attrVal);
                         if (groups != null) {
+                            obj['pre-render'].push(function(){
+                                return function(){
+                                    if(!obj['observed']){
+                                        let observable = new Observer(obj.data);
+                                        obj.data = observable.data;
+                                        observable.observeAll(obj['render']);
+                                        obj['observed'] = true;
+                                    }
+                                }
+                            }());
+                            
                             obj['render'] = function (key, index, items) {
                                 return function () {
                                     //pre-render
@@ -426,7 +447,7 @@
         }
 
         //example with approach5
-        var observer = new Observer({ sports: sports });
+        const observer = new Observer({ sports: sports }, "data");
 
         function highlight(el) {
             el.style.backgroundColor = 'red';
