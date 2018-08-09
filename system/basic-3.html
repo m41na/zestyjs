@@ -9,54 +9,10 @@
 
 <body>
     <div id="container">
-        <ul id="list-0" style="border:1px solid red">
-            <li>Bake</li>
-            <li>Roast</li>
-            <li>Poach</li>
-            <li>Fry</li>
-        </ul>
-
-        <ul id="list-1" style="border:1px solid blue">
-            <li class="li-item">{item}</li>
-        </ul>
-
-        <ul id="list-2" style="border:1px solid green">
-            <li class="li-item" data-on-each="style in list">{style}</li>
-        </ul>
-
-        <cook-styles></cook-styles>
-
-        <cook-styles2></cook-styles2>
-
         <sports-list></sports-list>
     </div>
 
-    <template id="list-3">
-        <ul style="border:1px solid yellow" data-at-for="style in list">
-            <li class="li-item" data-at-if="style=='Bake'">
-                <a href="#" data-at-click="clicked">@{style}</a>
-            </li>
-        </ul>
-    </template>
-
-    <template id="list-4">
-        <div>
-            <p>Cooking</p>
-            <ul style="border:1px solid purple">
-                <li class="li-item" data-on-for="style, index in list">
-                    <span data-on-if="{show: style=='Bake'}" data-index="@{index + 1}">
-                        <a href="#" data-on-event="{click: clicked}" style="color:red;">@{style}</a>
-                    </span>
-                    <span data-on-else data-index="@{index + 1}">
-                        <a href="#" data-on-event="{hover: hovering}" data-on-text="style" style="color:green"></a>
-                    </span>
-                    </template>
-                </li>
-            </ul>
-        </div>
-    </template>
-
-    <template id="list-5">
+    <template id="sports-template">
         <div>
             <p>Sports</p>
             <ul class="items-list">
@@ -71,50 +27,7 @@
     </template>
 
     <script>
-        var items = [{ style: 'Bake' }, { style: 'Roast' }, { style: 'Poach' }, { style: 'Fry' }];
-
         var sports = [{ sport: { name: 'Rugby' } }, { sport: { name: 'Soccer' } }, { sport: { name: 'Hockey' } }, { sport: { name: 'Tennis' } }];
-
-        //approach 1 - naive way of baking the model into the DOM
-        function approach1(data, target) {
-            let li1 = document.getElementById(target);
-            let tmpl = li1.querySelector(".li-item");
-            tmpl.remove();
-
-            var frag = document.createDocumentFragment();
-            var base = tmpl.outerHTML;
-
-            data.forEach(e => {
-                var el = htmlToElement(base.replace(/({.*})/, e.style));
-                frag.appendChild(el);
-            });
-            li1.appendChild(frag);
-        }
-
-        approach1(items, "list-1");
-
-        //approach 2 - seperation of model from the DOM -> using callbacks to propagate model changes into the DOM
-        function approach2(observer, target) {
-            let li2 = document.getElementById(target);
-            let tmpl = li2.querySelector(".li-item");
-            tmpl.remove();
-            let params = tmpl.dataset['onEach'].split(" in ");
-
-            let frag = document.createDocumentFragment();
-            var base = tmpl.outerHTML.replace(/data-on-each=".+?"/, "");
-
-            let data = observer.data;
-            data.forEach((e, i) => {
-                var prop = params[0];
-                var el = htmlToElement(base.replace(/({.*})/, e.style));
-                syncNode(observer, el, data[i], prop);
-                frag.appendChild(el);
-            });
-            li2.appendChild(frag);
-        }
-
-        const observer = Observer(items);
-        approach2(observer, "list-2");
 
         //-------------------- utils ---------------------//
         function htmlToElement(html) {
@@ -192,77 +105,20 @@
             });
         }
 
-        //idea for approach 3 - nesting DOM in functions
-        function approach3() {
-            return function (context) {
-                return {
-                    open: `<ul style="border:1px solid yellow" data-at-for="style in list">`,
-                    elements: context.data.map((data, index) => {
-                        let key = 'style';
-                        let value = data[key];
-                        return function () {
-                            if (eval("value=='Bake'")) {
-                                return {
-                                    open: `<li class="li-item" data-at-if="style=='Bake'" style="color:green">`,
-                                    elements: [
-                                        function () {
-                                            return {
-                                                open: `<a href="#" data-at-click="clicked">`,
-                                                text: `${value}`,
-                                                close: `</a>`
-                                            }
-                                        }
-                                    ],
-                                    close: `</li> `
-                                }
-                            } else {
-                                return {
-                                    open: `<li class="li-item" data-at-else style="color:red">`,
-                                    elements: [
-                                        function () {
-                                            return {
-                                                open: `<a href="#" data-at-click="clicked">`,
-                                                text: `${value}`,
-                                                close: `</a>`
-                                            }
-                                        }
-                                    ],
-                                    close: `</li> `
-                                }
-                            }
-                        }
-                    }),
-                    close: `</ul>`
-                }
+        function evalWithContext(expr) {
+            return function (ctx) {
+                let params = Object.keys(ctx).map(e => { return { param: e, value: ctx[e] } });
+                let arg_names = params.map(e => e.param).reduce((acc, curr) => {
+                    return acc += (", " + curr)
+                }, "");
+                let arg_values = params.map(e => e.value);
+                let function_body = "return function(expr" + arg_names + "){ return " + expr + ";}";
+                let callback = new Function(function_body);
+                return callback().apply(ctx, [expr].concat(arg_values));
             }
         }
 
-        let markup = "";
-
-        function renderApproach3(element) {
-            markup += element.open;
-            let elements = element.elements;
-            if (elements) {
-                for (let el in elements)
-                    renderApproach3(elements[el]());
-            } else {
-                markup += element.text;
-            }
-            markup += element.close;
-        }
-
-        function toDOMApproach3(target) {
-            renderApproach3(approach3()(observer));
-            console.log(markup);
-            let template = htmlToElement(markup);
-
-            let domElement = document.getElementById(target);
-            domElement.replaceWith(template)
-        }
-
-        toDOMApproach3("list-3");
-
-        //approach 4 - automating approach 3 -> building up the tree recursively
+        //approach 5 - pushing approach4 further - get DOM to react with data change
         function mirrorDOM(node) {
             let obj = {};
             obj['data'] = {};
@@ -292,15 +148,15 @@
                     var attrVal = attrs[i].value;
 
                     let groups = /@\{(.+?)\}/g.exec(attrVal);
-                    if(groups != null){
+                    if (groups != null) {
                         obj['post-render'].push(function (expr) {
                             return function () {
                                 let evaled = evalWithContext(expr)(obj.data);
-                                if(obj.element.nodeType == 1 && obj.element.hasAttribute(attrName)){
+                                if (obj.element.nodeType == 1 && obj.element.hasAttribute(attrName)) {
                                     obj.element.setAttribute(attrName, attrVal.replace(/(@\{.+?\})/g, evaled));
                                 }
                             }
-                        }(groups[1]));                        
+                        }(groups[1]));
                     }
 
                     if (attrName === 'data-on-for') {
@@ -330,7 +186,7 @@
                                     }
                                     obj.element = frag;
                                     //post-render
-                                    obj['post-render'].forEach(e=>e.call());
+                                    obj['post-render'].forEach(e => e.call());
                                     //return element
                                     return obj.element;
                                 }
@@ -363,7 +219,7 @@
                                         //invoke handler
                                         let method = new Function('frag', 'return ' + handler + '(frag);');
                                         method(frag.firstElementChild);
-                                         //post-render
+                                        //post-render
                                         obj['post-render'].forEach(e => e.call());
                                         //return element
                                         return obj.element;
@@ -399,7 +255,7 @@
                                         //invoke handler
                                         let method = new Function('frag', 'return ' + handler + '(frag);');
                                         method(frag.firstElementChild);
-                                         //post-render
+                                        //post-render
                                         obj['post-render'].forEach(e => e.call());
                                         //return element
                                         return obj.element;
@@ -517,22 +373,7 @@
             return obj;
         }
 
-        function approach4(target, data) {
-            let node = document.getElementById(target);
-            node.remove();
-            let nodeObj = mirrorDOM(node.content.firstElementChild);
-            console.log(nodeObj);
-
-            //apply Model to DOM
-            nodeObj.data = data;
-            let element = nodeObj.render();
-
-            document.querySelector("cook-styles2").replaceWith(element);
-        }
-
-        approach4("list-4", { list: items });
-
-        //another example with approach4       
+        //example with approach4   
 
         function highlight(el) {
             el.style.backgroundColor = 'red';
@@ -542,7 +383,7 @@
             el.style.display = '';
         }
 
-        function approach4_2(target, data) {
+        function approach5(target, data) {
             let node = document.getElementById(target);
             node.remove();
             let nodeObj = mirrorDOM(node.content.firstElementChild);
@@ -555,25 +396,7 @@
             document.querySelector("sports-list").replaceWith(element);
         }
 
-        approach4_2("list-5", { sports: sports });
-
-        //utility method - resolve string expressions
-        function evalWithContext(expr) {
-            return function (ctx) {
-                let params = Object.keys(ctx).map(e => { return { param: e, value: ctx[e] } });
-                let arg_names = params.map(e => e.param).reduce((acc, curr) => {
-                    return acc += (", " + curr)
-                }, "");
-                let arg_values = params.map(e => e.value);
-                let function_body = "return function(expr" + arg_names + "){ return " + expr + ";}";
-                let callback = new Function(function_body);
-                return callback().apply(ctx, [expr].concat(arg_values));
-            }
-        }
-
-        var ex_expr = "data.curr>10 && data.min==10";
-        var ex_obj = { data: { min: 10, max: 20, curr: 12 }, music: ['jams', 'beats'] };
-        console.log(evalWithContext(ex_expr)(ex_obj));
+        approach5("sports-template", { sports: sports });
     </script>
 </body>
 
