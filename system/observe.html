@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>List Items</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+<body>
+    <div id="container">
+        <p>Observe</p>
+    </div>
+
+    <script>
+
+        let Observer = function(onchange){
+            
+            let handler = {
+                get: function (obj, prop) {
+                    return obj[prop];
+                },
+                set: function(obj, prop, value) {
+                    if(typeof obj === 'object' && Array.isArray(obj)){
+                        if(prop !== 'length'){
+                            obj.push(value);
+                            onchange("value added");
+                        }
+                    }
+                    else{
+                        obj[prop] = value;
+                        onchange("value changed");
+                    }
+                    //handle change
+                    return true;
+                },
+                deleteProperty: function(obj, prop){
+                    if(typeof obj === 'object' && Array.isArray(obj)){
+                        obj.splice(obj.findIndex(e=>e===prop), 1);
+                    }
+                    else{
+                        delete obj[prop];
+                    }
+                    //handle change
+                    onchange("property dropped");
+                    return true;
+                }
+            };
+
+            function observe(data){
+                return new Proxy(data, handler);
+            }
+
+            return {
+                observe
+            }
+        }
+
+        let p = new Observer(e=>console.log(e)).observe([]);        
+        p.push(1); 
+        p.push(2); 
+        p.pop(); 
+        p.push(3); 
+        p.push(2);
+        console.log(p);
+
+        var q = new Observer(e=>console.log(e)).observe({});   
+        q.list = []; 
+        q.list.push(2); 
+        q.list.pop(); 
+        delete q.list; 
+        q['p'] = p;
+        q.name = "que";
+        console.log(q);
+    </script>
+</body>
+
+</html>

@@ -31,73 +31,86 @@
 
         //-------------------- utils ---------------------//
         //observe using a proxy
-        function observe(target, listener){
-            let observable;
+        let Observer = function(data){
+            
+            let onchange;
 
-            const set = (target, name, value) => {
-                console.log(`setting ${name}: ${value}`);
-                target[name] = value;
-                listener(observable);
-                return true;
-            };
-
-            const get = (target, name) => {
-                const value = target[name];
-                console.log(`getting ${name}: ${value}`);
-                return Object.freeze(target[name]);
-            };
-
-            const handler = {
-                set,
-                get
-            };
-
-            observable = new Proxy(target, handler);
-
-            return observable;
-        };
-
-        //observe by attaching getters/setters
-        function Observer(data) {
-            let handler;
-
-            function observe(signalHandler) {
-                handler = signalHandler;
-                return data;
-            }
-
-            function notify(signal) {
-                signalHandler();
-            }
-
-            function observeProp(obj, key) {
-                let val = obj[key];
-                console.log('observing property ', key);
-                Object.defineProperty(obj, key, {
-                    get() {
-                        return val; //simply return cached value
-                    },
-                    set(newval) {
-                        val = newval;
-                        notify(key); 
-                        console.log('changed detected in ', key);
+            let handler = {
+                get: function (obj, prop) {
+                    return obj[prop];
+                },
+                set: function(obj, prop, value) {
+                    if(typeof obj === 'object' && Array.isArray(obj)){
+                        if(prop !== 'length'){
+                            obj.push(value);
+                            console.log("value added")
+                            onchange(value);
+                        }
                     }
-                });
+                    else{
+                        obj[prop] = value;
+                        console.log("value changed");
+                        onchange(value);
+                    }
+                    //handle change
+                    return true;
+                },
+                deleteProperty: function(obj, prop){
+                    if(typeof obj === 'object' && Array.isArray(obj)){
+                        let removed = obj.splice(obj.findIndex(e=>e===prop), 1);
+                        onchange(removed);
+                    }
+                    else{
+                        delete obj[prop];
+                        onchange(prop);
+                    }
+                    //handle change
+                    return true;
+                }
+            };
+
+            function observe(callback){
+                onchange = callback;
+                return new Proxy(data, handler);
             }
 
-            function observeData(obj) {
-                for (let key in obj) {
-                    if (obj.hasOwnProperty(key)) {
-                        observeProp(obj, key);
+            return {
+                observe
+            }
+        }
+
+        function Observable(data) {
+
+            function isObject(value) {
+                return value && typeof value === 'object' && value.constructor == Object;
+            }
+
+            function isArray(value) {
+                return value && typeof value === 'object' && value.constructor == Array;
+            }
+
+            function makeReactive(obj){
+                if(isObject(obj)){
+                    for (let key in obj) {
+                        if (obj.hasOwnProperty(key)) {
+                            let val = obj[key];
+                            obj[key] = new Observer(obj[key]);                                                   
+                            makeReactive(val);
+                            if(isArray(val)){
+                                for(let i = 0; i < val.length; i++){
+                                    makeReactive(val[i]);
+                                }
+                            }
+                        }
                     }
                 }
             }
 
-            observeData(data);
+            makeReactive(data);
 
             return {
-                observe: observe
-            }  
+                data
+            }
         }
 
         function evalWithContext(expr) {
@@ -130,7 +143,10 @@
                     obj['pre-render'].push(function(){
                         return function(){
                             if(!obj['observed']){
-                                obj.data = new Observer(obj.data).observe(obj['render']);
+                                observer.observe(data=>{
+                                    obj.data = data;
+                                    obj['render']();
+                                });
                                 obj['observed'] = true;
                             }
                         }
@@ -188,7 +204,10 @@
                             obj['pre-render'].push(function(){
                                 return function(){
                                     if(!obj['observed']){
-                                        obj.data = new Observer(obj.data).observe(obj['render']);
+                                        observer.onchange(data=>{
+                                            obj.data = data;
+                                            obj['render']();
+                                        });
                                         obj['observed'] = true;
                                     }
                                 }
@@ -431,6 +450,8 @@
             return obj;
         }
 
+        const observable = new Observable({sports: sports});
+
         //example with approach5
         function highlight(el) {
             el.style.backgroundColor = 'red';
@@ -457,7 +478,7 @@
         }
 
         const vdom = approach5("sports-template");
-        renderDOM(vdom, {sports: sports});
+        renderDOM(vdom, observable.data);
     </script>
 </body>
 
