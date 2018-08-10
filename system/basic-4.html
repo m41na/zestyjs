@@ -30,6 +30,7 @@
         var sports = [{ sport: { name: 'Rugby' } }, { sport: { name: 'Soccer' } }, { sport: { name: 'Hockey' } }, { sport: { name: 'Tennis' } }];
 
         //-------------------- utils ---------------------//
+        //observe using a proxy
         function observe(target, listener){
             let observable;
 
@@ -55,6 +56,49 @@
 
             return observable;
         };
+
+        //observe by attaching getters/setters
+        function Observer(data) {
+            let handler;
+
+            function observe(signalHandler) {
+                handler = signalHandler;
+                return data;
+            }
+
+            function notify(signal) {
+                signalHandler();
+            }
+
+            function observeProp(obj, key) {
+                let val = obj[key];
+                console.log('observing property ', key);
+                Object.defineProperty(obj, key, {
+                    get() {
+                        return val; //simply return cached value
+                    },
+                    set(newval) {
+                        val = newval;
+                        notify(key); 
+                        console.log('changed detected in ', key);
+                    }
+                });
+            }
+
+            function observeData(obj) {
+                for (let key in obj) {
+                    if (obj.hasOwnProperty(key)) {
+                        observeProp(obj, key);
+                    }
+                }
+            }
+
+            observeData(data);
+
+            return {
+                observe: observe
+            }  
+        }
 
         function evalWithContext(expr) {
             return function (ctx) {
@@ -86,7 +130,7 @@
                     obj['pre-render'].push(function(){
                         return function(){
                             if(!obj['observed']){
-                                obj.data = observe(obj.data, obj['render']);
+                                obj.data = new Observer(obj.data).observe(obj['render']);
                                 obj['observed'] = true;
                             }
                         }
@@ -144,7 +188,7 @@
                             obj['pre-render'].push(function(){
                                 return function(){
                                     if(!obj['observed']){
-                                        obj.data = observe(obj.data, obj['render']);
+                                        obj.data = new Observer(obj.data).observe(obj['render']);
                                         obj['observed'] = true;
                                     }
                                 }
