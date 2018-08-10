@@ -8,162 +8,412 @@
 </head>
 
 <body>
-    <div id="container">        
-        <ul class="items-list">
-            <li class="list-item">
-                <span style="color:red;" data-index="0"></span>
-            </li>
-            <li class="list-item">
-                <span style="color:yellow;" data-index="1"></span>
-            </li>
-            <li class="list-item">
-                <span style="color:green;" data-index="2"></span>
-            </li>
-        </ul>
-
-        <select class="items-font">
-            <option data-font="0" value="initial">initial</option>
-            <option data-font="1" value="italic">italic</option>
-            <option data-font="2" value="oblique">oblique</option>
-        </select>
+    <div id="container">
+        <sports-list></sports-list>
     </div>
 
+    <template id="sports-template">
+        <div>
+            <p>Sports</p>
+            <ul class="items-list">
+                <li class="list-item" data-on-for="sport, index in sports">
+                    <span data-on-if="{show: index==0}" style="color:red;display:none;">@{index+1}</span>
+                    <span data-on-elif="{show: index==1}" style="color:yellow;display:none;">@{index+1}</span>
+                    <span data-on-else style="color:green;" data-on-text="sport.name"></span>
+                    <i>- @{sport.name}</i>
+                </li>
+            </ul>
+        </div>
+    </template>
+
     <script>
-        var data = {font: 'normal', sports: [{ sport: { name: 'Rugby' } }, { sport: { name: 'Soccer' } }, { sport: { name: 'Hockey' } }, { sport: { name: 'Tennis' } }]};
-        let items_list = document.querySelector(".items-list");
-        let font_select = document.querySelector(".items-font");
+        var sports = [{ sport: { name: 'Rugby' } }, { sport: { name: 'Soccer' } }, { sport: { name: 'Hockey' } }, { sport: { name: 'Tennis' } }];
 
-        //approach 1: firing custom event using DOM
-        //cons - requires DOM events in order to work (tight coupling)
-        function approach1(list){
-            let li = list.firstElementChild;
-            while(li != null){
-                updateNode(li);
-                li.addEventListener('update', function(ev){
-                    updateNode(ev.target);
-                });
-                li = li.nextElementSibling;
-            }
+        //-------------------- utils ---------------------//
+        function observe(target, listener){
+            let observable;
 
-            font_select.addEventListener('change', function(ev){
-                data.font = ev.target.value;
-                let event = new Event('update');
-                let li = list.firstElementChild;
-                while(li != null){
-                    li.dispatchEvent(event);
-                    li = li.nextElementSibling;
-                }
-            });
+            const set = (target, name, value) => {
+                console.log(`setting ${name}: ${value}`);
+                target[name] = value;
+                listener(observable);
+                return true;
+            };
 
-            function updateNode(e){
-                let span = e.firstElementChild;
-                span.style.fontStyle = data.font;
-                let index = span.dataset.index;
-                span.textContent = data.sports[index].sport.name;
-            }
+            const get = (target, name) => {
+                const value = target[name];
+                console.log(`getting ${name}: ${value}`);
+                return Object.freeze(target[name]);
+            };
+
+            const handler = {
+                set,
+                get
+            };
+
+            observable = new Proxy(target, handler);
+
+            return observable;
         };
 
-        //approach1(items_list);
-
-        //appreach2 - data observer 
-        //pros - decouples model from DOM to a large extent
-        function isObject(value) {
-            return value && typeof value === 'object' && value.constructor == Object;
+        function evalWithContext(expr) {
+            return function (ctx) {
+                let params = Object.keys(ctx).map(e => { return { param: e, value: ctx[e] } });
+                let arg_names = params.map(e => e.param).reduce((acc, curr) => {
+                    return acc += (", " + curr)
+                }, "");
+                let arg_values = params.map(e => e.value);
+                let function_body = "return function(expr" + arg_names + "){ return " + expr + ";}";
+                let callback = new Function(function_body);
+                return callback().apply(ctx, [expr].concat(arg_values));
+            }
         }
 
-        function isArray(value) {
-            return value && typeof value === 'object' && value.constructor == Array;
-        }
-
-        function Observer(data, start) {
-            let signals = {};
-
-            function observe(property, signalHandler) {
-                if (!signals[property]) signals[property] = []; //if there's no signal on the given property, 
-                //create one and set it to a new array to store the signal handlers
-
-                signals[property].push(signalHandler); //push the signalHandler into the signals array,
-                //which effectively gives us an array of callback functions
-            }
-
-            function notify(signal) {
-                if (!signals[signal] || signals[signal].length < 1) return;
-                signals[signal].forEach((signalHandler) => signalHandler());
-            }
-
-            function makeReactive(obj, key) {
-                let val = obj[key];
-                console.log('now observing ', key);
-                Object.defineProperty(obj, key, {
-                    get() {
-                        return val; //simply return cached value
-                    },
-                    set(newval) {
-                        val = newval; //save the new val
-                        notify(key); //ignore for now
-                        console.log('changed detected in ', key);
-                    }
-                });
-            }
-
-            function observeData(obj, start) {
-                for (let key in obj) {
-                    if (obj.hasOwnProperty(key)) {
-                        let prop = (start || '').concat('.').concat(key);
-                        makeReactive(obj, key);
-                        //observe nested object values
-                        let val = obj[key];
-                        if (isObject(val)) {                            
-                            observeData(val, prop);
+        //approach 5 - pushing approach4 further - get DOM to react with data change
+        //problem - difficult to target the data changing in the DOM
+        function mirrorDOM(node) {
+            let obj = {};
+            obj['data'] = {};
+            obj['methods'] = {};
+            obj['parent'] = undefined;
+            obj['pre-render'] = [];
+            obj['post-render'] = [];
+            if (node.nodeType === 3) {
+                let textVal = node.textContent;
+                let expr_regex = /@\{(.+?)\}/g;
+                let groups = expr_regex.exec(textVal);
+                if (groups != null) {
+                    obj['pre-render'].push(function(){
+                        return function(){
+                            if(!obj['observed']){
+                                obj.data = observe(obj.data, obj['render']);
+                                obj['observed'] = true;
+                            }
                         }
-                        if(isArray(val)){
-                            for(let i = 0; i < val.length; i++){
-                                let index = prop + '.' + key + '[' + i + ']';
-                                if(isObject(val[i])){
-                                    observeData(val[i], index);
+                    }());
+
+                    obj['render'] = function (expr) {
+                        return function () {
+                            //pre-render
+                            obj['pre-render'].forEach(e => e.call());
+
+                            //do render
+                            let evaled = evalWithContext(expr)(obj.data);
+                            node.textContent = textVal.replace(/(@\{.+?\})/g, evaled);
+
+                            //post-render
+                            obj['post-render'].forEach(e => e.call());
+                            return obj.element;
+                        }
+                    }(groups[1]);
+                }
+            }
+            else if (node.hasAttributes()) {
+                obj.attributes = [];
+                var attrs = node.attributes;
+                for (var i = attrs.length - 1; i >= 0; i--) {
+                    var attrName = attrs[i].name;
+                    var attrVal = attrs[i].value;
+
+                    let groups = /@\{(.+?)\}/g.exec(attrVal);
+                    if (groups != null) {
+                        obj['post-render'].push(function (expr) {
+                            return function () {
+                                //pre-render
+                                obj['pre-render'].forEach(e => e.call());
+                                
+                                //do render
+                                let evaled = evalWithContext(expr)(obj.data);
+                                if (obj.element.nodeType == 1 && obj.element.hasAttribute(attrName)) {
+                                    obj.element.setAttribute(attrName, attrVal.replace(/(@\{.+?\})/g, evaled));
+                                }
+
+                                //post-render
+                                obj['post-render'].forEach(e => e.call());
+                            }
+                        }(groups[1]));
+                    }
+
+                    if (attrName === 'data-on-for') {
+                        node.removeAttribute(attrName);
+                        //preserve the markup in template
+                        obj['template'] = node.outerHTML;
+                        var for_reg = /(.+?)(,\s*(\b.+?))?\s*in\s*(.+)/g;
+                        let groups = for_reg.exec(attrVal);
+                        if (groups != null) {
+                            obj['pre-render'].push(function(){
+                                return function(){
+                                    if(!obj['observed']){
+                                        obj.data = observe(obj.data, obj['render']);
+                                        obj['observed'] = true;
+                                    }
+                                }
+                            }());
+                            
+                            obj['render'] = function (key, index, items) {
+                                return function () {
+                                    //pre-render
+                                    obj['pre-render'].forEach(e => e.call());
+
+                                    //do render
+                                    let for_ctx = evalWithContext(items)(obj.data);
+                                    let frag = document.createDocumentFragment();
+                                    for (var i in for_ctx) {
+                                        let ctx = {};
+                                        ctx[key] = for_ctx[i][key];
+                                        if (index) {
+                                            ctx[index] = i;
+                                        }
+                                        //create element
+                                        let templ = document.createElement('template');
+                                        templ.innerHTML = obj.template;
+                                        let newElement = templ.content.firstElementChild;
+                                        let newObj = mirrorDOM(newElement);
+                                        newObj.data = ctx;
+                                        frag.appendChild(newObj.render());
+                                    }
+                                    obj.element = frag;
+                                    
+                                    //post-render
+                                    obj['post-render'].forEach(e => e.call());
+                                    //return element
+                                    return obj.element;
+                                }
+                            }(groups[1], groups[3], groups[4]);
+                        }
+                        continue;
+                    }
+                    if (attrName === 'data-on-if') {
+                        node.removeAttribute(attrName);
+                        //preserve the markup in template
+                        obj['template'] = node.outerHTML;
+                        var if_reg = /\{(.+?\s*):\s*(.+?)\}/g;
+                        let groups = if_reg.exec(attrVal);
+                        if (groups != null) {
+                            obj['render'] = function (handler, expr) {
+                                return function () {
+                                    let evaled = evalWithContext(expr)(obj.data);
+                                    obj.parent['if_expr'] = evaled;
+                                    if (evaled) {
+                                        //pre-render
+                                        obj['pre-render'].forEach(e => e.call());
+
+                                        //do render
+                                        let frag = document.createDocumentFragment();
+                                        //create element
+                                        let templ = document.createElement('template');
+                                        templ.innerHTML = obj.template;
+                                        let newElement = templ.content.firstElementChild;
+                                        let newObj = mirrorDOM(newElement);
+                                        newObj.data = obj.data;
+                                        frag.appendChild(newObj.render());
+                                        //set element value
+                                        obj.element = frag;
+                                        //invoke handler
+                                        let method = new Function('frag', 'return ' + handler + '(frag);');
+                                        method(frag.firstElementChild);
+                                        
+                                        //post-render
+                                        obj['post-render'].forEach(e => e.call());
+                                        //return element
+                                        return obj.element;
+                                    }
+                                }
+                            }(groups[1], groups[2]);
+                        }
+                        continue;
+                    }
+                    if (attrName === 'data-on-elif') {
+                        node.removeAttribute(attrName);
+                        //preserve the markup in template
+                        obj['template'] = node.outerHTML;
+                        var elif_reg = /\{(.+?\s*):\s*(.+?)\}/g;
+                        let groups = elif_reg.exec(attrVal);
+                        if (groups != null) {
+                            obj['render'] = function (handler, expr) {
+                                return function () {
+                                    let evaled = evalWithContext(expr)(obj.data);
+                                    let if_expr = obj.parent['if_expr'];
+                                    obj.parent['if_expr'] = !evaled ? if_expr : evaled;
+                                    if (evaled) {
+                                        //pre-render
+                                        obj['pre-render'].forEach(e => e.call());
+
+                                        //do render
+                                        let frag = document.createDocumentFragment();
+                                        //create element
+                                        let templ = document.createElement('template');
+                                        templ.innerHTML = obj.template;
+                                        let newElement = templ.content.firstElementChild;
+                                        let newObj = mirrorDOM(newElement);
+                                        newObj.data = obj.data;
+                                        frag.appendChild(newObj.render());
+                                        //set element value
+                                        obj.element = frag;
+                                        //invoke handler
+                                        let method = new Function('frag', 'return ' + handler + '(frag);');
+                                        method(frag.firstElementChild);
+                                        
+                                        //post-render
+                                        obj['post-render'].forEach(e => e.call());
+                                        //return element
+                                        return obj.element;
+                                    }
+                                }
+                            }(groups[1], groups[2]);
+                        }
+                        continue;
+                    }
+                    if (attrName === 'data-on-else') {
+                        node.removeAttribute(attrName);
+                        //preserve the markup in template
+                        obj['template'] = node.outerHTML;
+                        obj['render'] = function (handler, expr) {
+                            return function () {
+                                let evaled = obj.parent['if_expr'];
+                                if (!evaled) {
+                                    //pre-render
+                                    obj['pre-render'].forEach(e => e.call());
+
+                                    //do render
+                                    let frag = document.createDocumentFragment();
+                                    //create element
+                                    let templ = document.createElement('template');
+                                    templ.innerHTML = obj.template;
+                                    let newElement = templ.content.firstElementChild;
+                                    let newObj = mirrorDOM(newElement);
+                                    newObj.data = obj.data;
+                                    frag.appendChild(newObj.render());
+                                    //set element value
+                                    obj.element = frag;
+
+                                    //post-render
+                                    obj['post-render'].forEach(e => e.call());
+                                    //return element
+                                    return obj.element;
+                                }
+                            }
+                        }();
+                        continue;
+                    }
+                    if (attrName === 'data-on-text') {
+                        obj['render'] = function (expr) {
+                            return function () {
+                                //pre-render
+                                obj['pre-render'].forEach(e => e.call());
+                                
+                                //do render
+                                let evaled = evalWithContext(expr)(obj.data);
+                                obj.element.append(evaled);
+
+                                //post-render
+                                obj['post-render'].forEach(e => e.call());
+                                return obj.element;
+                            }
+                        }(attrVal);
+                        obj['post-render'].push(function (attrName) {
+                            return function () {
+                                if (obj.element.nodeType == 1 && obj.element.hasAttribute(attrName)) {
+                                    obj.element.removeAttribute(attrName);
+                                }
+                            }
+                        }(attrName));
+                        continue;
+                    }
+                    if (attrName === 'data-on-bind') {
+                        obj.attributes.push({ name: attrName, value: { expr: attrVal } });
+                    }
+                    if (attrName === 'data-on-event') {
+                        var event_reg = /(\{(.+?)\s*:\s*(.+?)\})/g;
+                        let groups = event_reg.exec(attrVal);
+                        if (groups != null) {
+                            obj.attributes.push({ name: attrName, value: { event: groups[1], handler: groups[2] } });
+                        }
+                    }
+                    obj.attributes.push({
+                        name: attrName,
+                        value: attrVal
+                    });
+                    continue;
+                }
+            }
+            if (node.hasChildNodes()) {
+                let nodeList = node.childNodes;
+                obj['children'] = [];
+                let child = node.firstChild;
+                while (child != null) {
+                    node.removeChild(child);
+                    let newChild = mirrorDOM(child);
+                    newChild.parent = obj;
+                    obj.children.push(newChild);
+                    child = node.firstChild;
+                }
+            }
+
+            //set 'template', 'element' and 'render' values
+            obj['element'] = node;
+            if (!obj.template) {
+                obj['template'] = node.outerHTML ? node.outerHTML : node.nodeName;
+            }
+            if (!obj.render) {
+                obj['render'] = function () {
+                    //pre-render
+                    obj['pre-render'].forEach(e => e.call());
+
+                    //do render
+                    if (obj.template && obj.template !== "#text") {
+                        let templ = document.createElement('template');
+                        templ.innerHTML = obj.template;
+                        obj.element = templ.content.firstElementChild;
+                        if (obj.children.length) {
+                            for (let i = 0; i < obj.children.length; i++) {
+                                let childElement = obj.children[i];
+                                childElement.data = obj.data;
+                                let validElement = childElement.render();
+                                //verify element is not null (possible when 'if/elif' condition fails) 
+                                if (validElement) {
+                                    obj.element.appendChild(validElement);
                                 }
                             }
                         }
                     }
-                }
-            }
 
-            observeData(data, start);
-
-            return {
-                data: data,
-                observe,
-                notify
+                    //post-render
+                    obj['post-render'].forEach(e => e.call());
+                    return obj.element;
+                };
             }
+            //return obj wrapper
+            return obj;
         }
 
-        const observer = new Observer(data, "data");
-
-        function approach2(list) {
-            for(let i = 0; i < list.children.length; i++){
-                let li = list.children[i];
-                updateNode(li);
-                observer.observe('font', function(){
-                    updateNode(li);
-                });
-                observer.observe('name', function(){
-                    updateNode(li);
-                });
-            }
-
-            font_select.addEventListener('change', function(ev){
-                observer.data.font = ev.target.value;
-            });
-
-            function updateNode(e){
-                let span = e.firstElementChild;
-                span.style.fontStyle = data.font;
-                let index = span.dataset.index;
-                span.textContent = data.sports[index].sport.name;
-            }
+        //example with approach5
+        function highlight(el) {
+            el.style.backgroundColor = 'red';
         }
 
-        approach2(items_list);
+        function show(el) {
+            el.style.display = '';
+        }
+
+        function approach5(target) {
+            let node = document.getElementById(target);
+            node.remove();
+            let nodeObj = mirrorDOM(node.content.firstElementChild);
+            console.log(nodeObj);
+            return nodeObj;
+        }
+
+        function renderDOM(tree, data){
+            //apply Model to DOM
+            tree.data = data;
+            let element = tree.render();
+
+            document.querySelector("sports-list").replaceWith(element);
+        }
+
+        const vdom = approach5("sports-template");
+        renderDOM(vdom, {sports: sports});
     </script>
 </body>
 
