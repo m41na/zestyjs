@@ -114,7 +114,9 @@
                 constructor() {
                     super();
                     this.proxy;
-                    this.callback;
+                    this.callback = function(data){
+                        console.log('override this with necessary logic');
+                    };
 
                     let handler = {
                         get: function (obj, prop) {
@@ -217,7 +219,9 @@
                 if (groups != null) {
                     obj['pre-render'].push(function () {
                         return function () {
-                            console.log('activate change listener');
+                            if(!obj.data.observe){
+                                obj.data.observe = obj['render'];
+                            }
                         }
                     }());
 
@@ -272,7 +276,9 @@
                         if (groups != null) {
                             obj['pre-render'].push(function () {
                                 return function () {
-                                    console.log('activate change listener');
+                                    if(!obj.data.observe){
+                                        obj.data.observe = obj['render'];
+                                    }
                                 }
                             }());
 
@@ -285,6 +291,7 @@
                                     let for_ctx = evalWithContext(items)(obj.data);
                                     let frag = document.createDocumentFragment();
                                     for (var i in for_ctx) {
+                                        if(['callback','proxy'].includes(i)) continue;
                                         let ctx = {};
                                         ctx[key] = for_ctx[i][key];
                                         if (index) {
@@ -423,6 +430,14 @@
                         continue;
                     }
                     if (attrName === 'data-on-text') {
+                        obj['pre-render'].push(function () {
+                            return function () {
+                                if(!obj.data.observe){
+                                    obj.data.observe = obj['render'];
+                                }
+                            }
+                        }());
+
                         obj['render'] = function (expr) {
                             return function () {
                                 //pre-render
@@ -540,7 +555,8 @@
 
         const vdom = approach5("sports-template");
         //const observable = new Observable({ sports: sports });
-        renderDOM(vdom, Observable2({ sports: sports }).data);
+        const observable = new Observable2({ sports: sports });
+        renderDOM(vdom, observable.data);
     </script>
 </body>
 
