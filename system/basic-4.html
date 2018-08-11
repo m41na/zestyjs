@@ -31,53 +31,47 @@
 
         //-------------------- utils ---------------------//
         //observe using a proxy
-        let Observer = function(data){
-            
-            let onchange;
+        let Observer = function (data) {
+
+            let onchange, proxy;
 
             let handler = {
                 get: function (obj, prop) {
                     return obj[prop];
                 },
-                set: function(obj, prop, value) {
-                    if(typeof obj === 'object' && Array.isArray(obj)){
-                        if(prop !== 'length'){
+                set: function (obj, prop, value) {
+                    if (typeof obj === 'object' && Array.isArray(obj)) {
+                        if (prop !== 'length') {
                             obj.push(value);
-                            console.log("value added")
-                            onchange(value);
+                            onchange(prop, value);
                         }
                     }
-                    else{
+                    else {
                         obj[prop] = value;
-                        console.log("value changed");
-                        onchange(value);
+                        onchange(prop, value);
                     }
                     //handle change
                     return true;
                 },
-                deleteProperty: function(obj, prop){
-                    if(typeof obj === 'object' && Array.isArray(obj)){
-                        let removed = obj.splice(obj.findIndex(e=>e===prop), 1);
-                        onchange(removed);
-                    }
-                    else{
-                        delete obj[prop];
-                        onchange(prop);
-                    }
+                deleteProperty: function (obj, prop) {
+                    delete obj[prop];
+                    onchange(prop);
                     //handle change
                     return true;
                 }
             };
 
-            function observe(callback){
+            proxy = new Proxy(data, handler);
+
+            function observe(callback) {
                 onchange = callback;
-                return new Proxy(data, handler);
             }
 
             return {
-                observe
+                observe,
+                data: proxy
             }
-        }
+        };
 
         function Observable(data) {
 
@@ -89,15 +83,15 @@
                 return value && typeof value === 'object' && value.constructor == Array;
             }
 
-            function makeReactive(obj){
-                if(isObject(obj)){
+            function makeReactive(obj) {
+                if (isObject(obj)) {
                     for (let key in obj) {
                         if (obj.hasOwnProperty(key)) {
-                            let val = obj[key];
-                            obj[key] = new Observer(obj[key]);                                                   
-                            makeReactive(val);
-                            if(isArray(val)){
-                                for(let i = 0; i < val.length; i++){
+                            obj[key] = new Observer(obj[key]);
+                            let val = obj[key].data;
+                            if (isArray(val)) {
+                                makeReactive(val);
+                                for (let i = 0; i < val.length; i++) {
                                     makeReactive(val[i]);
                                 }
                             }
@@ -112,6 +106,87 @@
                 data
             }
         }
+
+        let Observable2 = function (data) {
+
+            class WatchArray extends Array {
+
+                constructor() {
+                    super();
+                    this.proxy;
+                    this.callback;
+
+                    let handler = {
+                        get: function (obj, prop) {
+                            return obj[prop];
+                        },
+                        set: function (obj, prop, value) {
+                            if (prop !== 'length') {
+                                obj.push(value);
+                                callback(prop, value);
+                            }
+                            return true;
+                        }
+                    };
+
+                    this.proxy = new Proxy(this, handler);
+                }
+
+                observe(callback) {
+                    this.callback = callback;
+                }
+            }
+
+            function isObject(value) {
+                return value && typeof value === 'object' && value.constructor == Object;
+            }
+
+            function isArray(value) {
+                return value && typeof value === 'object' && value.constructor == Array;
+            }
+
+            function watchObject(obj, key) {
+                let val = obj[key];
+                console.log('now observing ', key);
+                Object.defineProperty(obj, key, {
+                    get() {
+                        return val;
+                    },
+                    set(newval) {
+                        val = newval; //save the new val
+                        onchange(key);
+                        console.log('changed detected in ', key);
+                    }
+                });
+
+                Object.defineProperty(obj, 'observe', function (callback) {
+                    Object.defineProperty(obj, 'onchange', callback);
+                });
+            }
+
+            function observeData(obj) {
+                if (isObject(obj)) {
+                    for (let key in obj) {
+                        if (obj.hasOwnProperty(key)) {
+                            let val = obj[key];
+                            watchObject(val);
+                            if (isArray(val)) {
+                                obj[key] = WatchArray.from(val);
+                                for (let i = 0; i < val.length; i++) {
+                                    observeData(val[i]);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            observeData(data);
+
+            return {
+                data: data
+            }
+        };
 
         function evalWithContext(expr) {
             return function (ctx) {
@@ -140,15 +215,9 @@
                 let expr_regex = /@\{(.+?)\}/g;
                 let groups = expr_regex.exec(textVal);
                 if (groups != null) {
-                    obj['pre-render'].push(function(){
-                        return function(){
-                            if(!obj['observed']){
-                                observer.observe(data=>{
-                                    obj.data = data;
-                                    obj['render']();
-                                });
-                                obj['observed'] = true;
-                            }
+                    obj['pre-render'].push(function () {
+                        return function () {
+                            console.log('activate change listener');
                         }
                     }());
 
@@ -181,9 +250,9 @@
                             return function () {
                                 //pre-render
                                 obj['pre-render'].forEach(e => e.call());
-                                
+
                                 //do render
-                                let evaled = evalWithContext(expr)(obj.data);
+                                let evaled = evalWithContext(expr)(obj.data.data);
                                 if (obj.element.nodeType == 1 && obj.element.hasAttribute(attrName)) {
                                     obj.element.setAttribute(attrName, attrVal.replace(/(@\{.+?\})/g, evaled));
                                 }
@@ -201,18 +270,12 @@
                         var for_reg = /(.+?)(,\s*(\b.+?))?\s*in\s*(.+)/g;
                         let groups = for_reg.exec(attrVal);
                         if (groups != null) {
-                            obj['pre-render'].push(function(){
-                                return function(){
-                                    if(!obj['observed']){
-                                        observer.onchange(data=>{
-                                            obj.data = data;
-                                            obj['render']();
-                                        });
-                                        obj['observed'] = true;
-                                    }
+                            obj['pre-render'].push(function () {
+                                return function () {
+                                    console.log('activate change listener');
                                 }
                             }());
-                            
+
                             obj['render'] = function (key, index, items) {
                                 return function () {
                                     //pre-render
@@ -236,7 +299,7 @@
                                         frag.appendChild(newObj.render());
                                     }
                                     obj.element = frag;
-                                    
+
                                     //post-render
                                     obj['post-render'].forEach(e => e.call());
                                     //return element
@@ -275,7 +338,7 @@
                                         //invoke handler
                                         let method = new Function('frag', 'return ' + handler + '(frag);');
                                         method(frag.firstElementChild);
-                                        
+
                                         //post-render
                                         obj['post-render'].forEach(e => e.call());
                                         //return element
@@ -316,7 +379,7 @@
                                         //invoke handler
                                         let method = new Function('frag', 'return ' + handler + '(frag);');
                                         method(frag.firstElementChild);
-                                        
+
                                         //post-render
                                         obj['post-render'].forEach(e => e.call());
                                         //return element
@@ -364,7 +427,7 @@
                             return function () {
                                 //pre-render
                                 obj['pre-render'].forEach(e => e.call());
-                                
+
                                 //do render
                                 let evaled = evalWithContext(expr)(obj.data);
                                 obj.element.append(evaled);
@@ -450,8 +513,6 @@
             return obj;
         }
 
-        const observable = new Observable({sports: sports});
-
         //example with approach5
         function highlight(el) {
             el.style.backgroundColor = 'red';
@@ -469,7 +530,7 @@
             return nodeObj;
         }
 
-        function renderDOM(tree, data){
+        function renderDOM(tree, data) {
             //apply Model to DOM
             tree.data = data;
             let element = tree.render();
@@ -478,7 +539,8 @@
         }
 
         const vdom = approach5("sports-template");
-        renderDOM(vdom, observable.data);
+        //const observable = new Observable({ sports: sports });
+        renderDOM(vdom, Observable2({ sports: sports }).data);
     </script>
 </body>
 
