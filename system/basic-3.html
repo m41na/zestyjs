@@ -67,6 +67,40 @@
 
         //approach2 - data observer 
         //pros - decouples model from DOM to a large extent
+        class WatchArray extends Array {
+
+            constructor() {
+                super();
+                this.proxy;
+                this.callback;
+
+                let handler = {
+                    get: function (obj, prop) {
+                        return obj[prop];
+                    },
+                    set: function (obj, prop, value) {
+                        if('callback' === prop){
+                            this.callback = value;
+                            return true;
+                        }
+                        if ('length' !== prop ) {
+                            obj.push(value);
+                            if(this.callback) this.callback();
+                        }
+                        return true;
+                    }
+                };
+
+                this.proxy = new Proxy(this, handler);
+            }
+
+            observe(callback, el) {
+                this.callback = function () {
+                    return callback(el);
+                }
+            }
+        }
+
         function isObject(value) {
             return value && typeof value === 'object' && value.constructor == Object;
         }
@@ -75,21 +109,7 @@
             return value && typeof value === 'object' && value.constructor == Array;
         }
 
-        function Observer(data, start) {
-            let signals = {};
-
-            function observe(property, signalHandler) {
-                if (!signals[property]) signals[property] = []; //if there's no signal on the given property, 
-                //create one and set it to a new array to store the signal handlers
-
-                signals[property].push(signalHandler); //push the signalHandler into the signals array,
-                //which effectively gives us an array of callback functions
-            }
-
-            function notify(signal) {
-                if (!signals[signal] || signals[signal].length < 1) return;
-                signals[signal].forEach((signalHandler) => signalHandler());
-            }
+        function Observer(data) {
 
             function makeReactive(obj, key) {
                 let val = obj[key];
@@ -100,55 +120,68 @@
                     },
                     set(newval) {
                         val = newval; //save the new val
-                        notify(key); //ignore for now
+                        this.callbacks[key](); //ignore for now
                         console.log('changed detected in ', key);
                     }
                 });
+
+                if(!obj.callbacks){
+                    Object.defineProperty(obj, 'callbacks', {
+                        value: {}
+                    });
+                }
+                
+                if (!obj.observe) {
+                    Object.defineProperty(obj, 'observe', {
+                        value: function(callback, el) {
+                            this.callbacks[key] = function(){
+                                return callback(el);
+                            }
+                        }
+                    });
+                }
             }
 
-            function observeData(obj, start) {
+            function observeData(obj) {
                 for (let key in obj) {
                     if (obj.hasOwnProperty(key)) {
-                        let prop = (start || '').concat('.').concat(key);
-                        makeReactive(obj, key);
-                        //observe nested object values
+                        //observe array container
                         let val = obj[key];
-                        if (isObject(val)) {                            
-                            observeData(val, prop);
-                        }
                         if(isArray(val)){
+                            obj[key] = WatchArray.from(val).proxy;
                             for(let i = 0; i < val.length; i++){
-                                let index = prop + '.' + key + '[' + i + ']';
                                 if(isObject(val[i])){
-                                    observeData(val[i], index);
+                                    observeData(val[i]);
                                 }
+                            }
+                        }
+                        else{
+                            makeReactive(obj, key);
+                            //observe nested object values
+                            if (isObject(val)) {
+                                observeData(val);
                             }
                         }
                     }
                 }
             }
 
-            observeData(data, start);
+            observeData(data);
 
             return {
-                data: data,
-                observe,
-                notify
+                data
             }
         }
 
-        const observer = new Observer(data, "data");
+        const observer = new Observer(data);
 
         function approach2(list) {
-            for(let i = 0; i < list.children.length; i++){
-                let li = list.children[i];
-                updateNode(li);
-                observer.observe('font', function(){
+
+            function updateAll(list){
+                for(let i = 0; i < list.children.length; i++){
+                    let li = list.children[i];
                     updateNode(li);
-                });
-                observer.observe('name', function(){
-                    updateNode(li);
-                });
+                }
             }
 
             font_select.addEventListener('change', function(ev){
@@ -159,33 +192,16 @@
                 let span = e.firstElementChild;
                 span.style.fontStyle = data.font;
                 let index = span.dataset.index;
+                data.observe(updateAll, list);
+                data.sports[index].sport.observe(updateAll, list);
                 span.textContent = data.sports[index].sport.name;
             }
+            
+            data.sports.observe(updateAll, list);
+            updateAll(list);
         }
 
         approach2(items_list);
-
-        //approach3 - data proxy 
-        //pros - ?
-        function loggable(target){
-            const loggingHandler = {
-                get: function (target, name) {
-                    const value = target[name];
-                    console.log(`getting ${name}: ${value}`);
-                    return value;
-                },
-                set: function (target, name, value) {
-                    console.log(`setting ${name}: ${value}`);
-                    target[name] = value;
-                    return true;
-                }
-            };
-
-            return new Proxy(target, loggingHandler);
-        }
-        let proxied = loggable({ font: 'normal', sports: [{ sport: { name: 'Rugby' } }, { sport: { name: 'Soccer' } }, { sport: { name: 'Hockey' } }, { sport: { name: 'Tennis' } }] });
-        console.log(proxied.sports.push({sport: {name: 'zee'}}));
-
     </script>
 </body>
 

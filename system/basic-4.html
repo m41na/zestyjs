@@ -30,102 +30,28 @@
         var sports = [{ sport: { name: 'Rugby' } }, { sport: { name: 'Soccer' } }, { sport: { name: 'Hockey' } }, { sport: { name: 'Tennis' } }];
 
         //-------------------- utils ---------------------//
-        //observe using a proxy
-        let Observer = function (data) {
 
-            let onchange, proxy;
-
-            let handler = {
-                get: function (obj, prop) {
-                    return obj[prop];
-                },
-                set: function (obj, prop, value) {
-                    if (typeof obj === 'object' && Array.isArray(obj)) {
-                        if (prop !== 'length') {
-                            obj.push(value);
-                            onchange(prop, value);
-                        }
-                    }
-                    else {
-                        obj[prop] = value;
-                        onchange(prop, value);
-                    }
-                    //handle change
-                    return true;
-                },
-                deleteProperty: function (obj, prop) {
-                    delete obj[prop];
-                    onchange(prop);
-                    //handle change
-                    return true;
-                }
-            };
-
-            proxy = new Proxy(data, handler);
-
-            function observe(callback) {
-                onchange = callback;
-            }
-
-            return {
-                observe,
-                data: proxy
-            }
-        };
-
-        function Observable(data) {
-
-            function isObject(value) {
-                return value && typeof value === 'object' && value.constructor == Object;
-            }
-
-            function isArray(value) {
-                return value && typeof value === 'object' && value.constructor == Array;
-            }
-
-            function makeReactive(obj) {
-                if (isObject(obj)) {
-                    for (let key in obj) {
-                        if (obj.hasOwnProperty(key)) {
-                            obj[key] = new Observer(obj[key]);
-                            let val = obj[key].data;
-                            if (isArray(val)) {
-                                makeReactive(val);
-                                for (let i = 0; i < val.length; i++) {
-                                    makeReactive(val[i]);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            makeReactive(data);
-
-            return {
-                data
-            }
-        }
-
-        let Observable2 = function (data) {
+        let Observable = function (data) {
 
             class WatchArray extends Array {
 
                 constructor() {
                     super();
                     this.proxy;
-                    this.callback = function(data){
-                        console.log('override this with necessary logic');
-                    };
+                    this.callback;
 
                     let handler = {
                         get: function (obj, prop) {
                             return obj[prop];
                         },
                         set: function (obj, prop, value) {
-                            if (prop !== 'length') {
+                            if ('callback' === prop) {
+                                this.callback = value;
+                                return true;
+                            }
+                            if ('length' !== prop && value != 'proxy') {
                                 obj.push(value);
-                                callback(prop, value);
+                                if (this.callback) this.callback();
                             }
                             return true;
                         }
@@ -135,7 +61,9 @@
                 }
 
                 observe(callback) {
-                    this.callback = callback;
+                    this.callback = function () {
+                        return callback();
+                    }
                 }
             }
 
@@ -147,7 +75,7 @@
                 return value && typeof value === 'object' && value.constructor == Array;
             }
 
-            function watchObject(obj, key) {
+            function makeReactive(obj, key) {
                 let val = obj[key];
                 console.log('now observing ', key);
                 Object.defineProperty(obj, key, {
@@ -156,28 +84,49 @@
                     },
                     set(newval) {
                         val = newval; //save the new val
-                        onchange(key);
+                        if(this.callback) this.callback(); //ignore for now
                         console.log('changed detected in ', key);
                     }
                 });
 
-                Object.defineProperty(obj, 'observe', function (callback) {
-                    Object.defineProperty(obj, 'onchange', callback);
-                });
+                if (!obj.observe) {
+                    Object.defineProperty(obj, 'observe', {
+                        value: function (callback) {
+                            let onchange = callback;
+                            return function(){                                
+                                if(onchange) onchange();
+                            }
+                        }
+                    });
+                }
+
+                if (!obj.callback) {
+                    Object.defineProperty(obj, 'callback', {
+                        value: obj['observe']()
+                    });
+                }
             }
 
             function observeData(obj) {
-                if (isObject(obj)) {
-                    for (let key in obj) {
-                        if (obj.hasOwnProperty(key)) {
-                            let val = obj[key];
-                            watchObject(val);
-                            if (isArray(val)) {
-                                obj[key] = WatchArray.from(val);
-                                for (let i = 0; i < val.length; i++) {
+                for (let key in obj) {
+                    if (obj.hasOwnProperty(key)) {
+                        //observe nested object values
+                        let val = obj[key];
+                        makeReactive(obj, key);
+                        if (isObject(val)) {
+                            observeData(val);
+                        }
+                        //observe array container
+                        if (isArray(val)) {
+                            obj[key] = WatchArray.from(val).proxy;
+                            for (let i = 0; i < val.length; i++) {
+                                if (isObject(val[i])) {
                                     observeData(val[i]);
                                 }
                             }
+                        }
+                        else {
+                            
                         }
                     }
                 }
@@ -186,7 +135,7 @@
             observeData(data);
 
             return {
-                data: data
+                data
             }
         };
 
@@ -210,32 +159,43 @@
             obj['data'] = {};
             obj['methods'] = {};
             obj['parent'] = undefined;
-            obj['pre-render'] = [];
-            obj['post-render'] = [];
+            obj['oncreate'] = undefined;
+            obj['onmount'] = undefined;
+            obj['ondestroy'] = undefined;
+            obj['lifecycle'] = {
+                created: false,
+                mounted: false,
+                destroyed: false
+            };
+            obj['initialize'] = function(){
+                if(!this.lifecycle.created){
+                    if(obj.oncreate) obj.oncreate();
+                    this.lifecycle.created = true;
+                    obj.data.observe(obj['render']);
+                    let element = obj.render();
+                    if (obj.onmount) obj.onmount();
+                    this.lifecycle.mounted = true;
+                    return element;
+                }
+            };
+            obj['teardown'] = function () {
+                if (!this.lifecycle.destroyed) {
+                    //remove from DOM before destroy callback
+                    if(obj.element) obj.element.remove();
+                    if (obj.ondestroy) obj.ondestroy();
+                    this.lifecycle.destroyed = true;
+                }
+            };
             if (node.nodeType === 3) {
                 let textVal = node.textContent;
                 let expr_regex = /@\{(.+?)\}/g;
                 let groups = expr_regex.exec(textVal);
                 if (groups != null) {
-                    obj['pre-render'].push(function () {
-                        return function () {
-                            if(!obj.data.observe){
-                                obj.data.observe = obj['render'];
-                            }
-                        }
-                    }());
-
                     obj['render'] = function (expr) {
                         return function () {
-                            //pre-render
-                            obj['pre-render'].forEach(e => e.call());
-
-                            //do render
                             let evaled = evalWithContext(expr)(obj.data);
                             node.textContent = textVal.replace(/(@\{.+?\})/g, evaled);
-
-                            //post-render
-                            obj['post-render'].forEach(e => e.call());
+                            //return element
                             return obj.element;
                         }
                     }(groups[1]);
@@ -250,19 +210,12 @@
 
                     let groups = /@\{(.+?)\}/g.exec(attrVal);
                     if (groups != null) {
-                        obj['post-render'].push(function (expr) {
+                        obj['render'].push(function (expr) {
                             return function () {
-                                //pre-render
-                                obj['pre-render'].forEach(e => e.call());
-
-                                //do render
                                 let evaled = evalWithContext(expr)(obj.data.data);
                                 if (obj.element.nodeType == 1 && obj.element.hasAttribute(attrName)) {
                                     obj.element.setAttribute(attrName, attrVal.replace(/(@\{.+?\})/g, evaled));
                                 }
-
-                                //post-render
-                                obj['post-render'].forEach(e => e.call());
                             }
                         }(groups[1]));
                     }
@@ -274,26 +227,12 @@
                         var for_reg = /(.+?)(,\s*(\b.+?))?\s*in\s*(.+)/g;
                         let groups = for_reg.exec(attrVal);
                         if (groups != null) {
-                            obj['pre-render'].push(function () {
-                                return function () {
-                                    if(!obj.data.observe){
-                                        obj.data.observe = obj['render'];
-                                    }
-                                }
-                            }());
-
                             obj['render'] = function (key, index, items) {
                                 return function () {
-                                    //pre-render
-                                    obj['pre-render'].forEach(e => e.call());
-
-                                    //do render
                                     let for_ctx = evalWithContext(items)(obj.data);
                                     let frag = document.createDocumentFragment();
-                                    for (var i in for_ctx) {
-                                        if(['callback','proxy'].includes(i)) continue;
-                                        let ctx = {};
-                                        ctx[key] = for_ctx[i][key];
+                                    for (var i = 0; i < for_ctx.length; i++) {
+                                        let ctx = for_ctx[i];
                                         if (index) {
                                             ctx[index] = i;
                                         }
@@ -303,12 +242,9 @@
                                         let newElement = templ.content.firstElementChild;
                                         let newObj = mirrorDOM(newElement);
                                         newObj.data = ctx;
-                                        frag.appendChild(newObj.render());
+                                        frag.appendChild(newObj.initialize());
                                     }
                                     obj.element = frag;
-
-                                    //post-render
-                                    obj['post-render'].forEach(e => e.call());
                                     //return element
                                     return obj.element;
                                 }
@@ -328,10 +264,6 @@
                                     let evaled = evalWithContext(expr)(obj.data);
                                     obj.parent['if_expr'] = evaled;
                                     if (evaled) {
-                                        //pre-render
-                                        obj['pre-render'].forEach(e => e.call());
-
-                                        //do render
                                         let frag = document.createDocumentFragment();
                                         //create element
                                         let templ = document.createElement('template');
@@ -339,15 +271,12 @@
                                         let newElement = templ.content.firstElementChild;
                                         let newObj = mirrorDOM(newElement);
                                         newObj.data = obj.data;
-                                        frag.appendChild(newObj.render());
+                                        frag.appendChild(newObj.initialize());
                                         //set element value
                                         obj.element = frag;
                                         //invoke handler
                                         let method = new Function('frag', 'return ' + handler + '(frag);');
                                         method(frag.firstElementChild);
-
-                                        //post-render
-                                        obj['post-render'].forEach(e => e.call());
                                         //return element
                                         return obj.element;
                                     }
@@ -369,10 +298,6 @@
                                     let if_expr = obj.parent['if_expr'];
                                     obj.parent['if_expr'] = !evaled ? if_expr : evaled;
                                     if (evaled) {
-                                        //pre-render
-                                        obj['pre-render'].forEach(e => e.call());
-
-                                        //do render
                                         let frag = document.createDocumentFragment();
                                         //create element
                                         let templ = document.createElement('template');
@@ -380,15 +305,12 @@
                                         let newElement = templ.content.firstElementChild;
                                         let newObj = mirrorDOM(newElement);
                                         newObj.data = obj.data;
-                                        frag.appendChild(newObj.render());
+                                        frag.appendChild(newObj.initialize());
                                         //set element value
                                         obj.element = frag;
                                         //invoke handler
                                         let method = new Function('frag', 'return ' + handler + '(frag);');
                                         method(frag.firstElementChild);
-
-                                        //post-render
-                                        obj['post-render'].forEach(e => e.call());
                                         //return element
                                         return obj.element;
                                     }
@@ -405,10 +327,6 @@
                             return function () {
                                 let evaled = obj.parent['if_expr'];
                                 if (!evaled) {
-                                    //pre-render
-                                    obj['pre-render'].forEach(e => e.call());
-
-                                    //do render
                                     let frag = document.createDocumentFragment();
                                     //create element
                                     let templ = document.createElement('template');
@@ -416,12 +334,9 @@
                                     let newElement = templ.content.firstElementChild;
                                     let newObj = mirrorDOM(newElement);
                                     newObj.data = obj.data;
-                                    frag.appendChild(newObj.render());
+                                    frag.appendChild(newObj.initialize());
                                     //set element value
                                     obj.element = frag;
-
-                                    //post-render
-                                    obj['post-render'].forEach(e => e.call());
                                     //return element
                                     return obj.element;
                                 }
@@ -430,35 +345,14 @@
                         continue;
                     }
                     if (attrName === 'data-on-text') {
-                        obj['pre-render'].push(function () {
-                            return function () {
-                                if(!obj.data.observe){
-                                    obj.data.observe = obj['render'];
-                                }
-                            }
-                        }());
-
                         obj['render'] = function (expr) {
                             return function () {
-                                //pre-render
-                                obj['pre-render'].forEach(e => e.call());
-
-                                //do render
                                 let evaled = evalWithContext(expr)(obj.data);
                                 obj.element.append(evaled);
-
-                                //post-render
-                                obj['post-render'].forEach(e => e.call());
+                                //return element
                                 return obj.element;
                             }
                         }(attrVal);
-                        obj['post-render'].push(function (attrName) {
-                            return function () {
-                                if (obj.element.nodeType == 1 && obj.element.hasAttribute(attrName)) {
-                                    obj.element.removeAttribute(attrName);
-                                }
-                            }
-                        }(attrName));
                         continue;
                     }
                     if (attrName === 'data-on-bind') {
@@ -498,10 +392,6 @@
             }
             if (!obj.render) {
                 obj['render'] = function () {
-                    //pre-render
-                    obj['pre-render'].forEach(e => e.call());
-
-                    //do render
                     if (obj.template && obj.template !== "#text") {
                         let templ = document.createElement('template');
                         templ.innerHTML = obj.template;
@@ -510,7 +400,7 @@
                             for (let i = 0; i < obj.children.length; i++) {
                                 let childElement = obj.children[i];
                                 childElement.data = obj.data;
-                                let validElement = childElement.render();
+                                let validElement = childElement.initialize();
                                 //verify element is not null (possible when 'if/elif' condition fails) 
                                 if (validElement) {
                                     obj.element.appendChild(validElement);
@@ -518,9 +408,7 @@
                             }
                         }
                     }
-
-                    //post-render
-                    obj['post-render'].forEach(e => e.call());
+                    //return element
                     return obj.element;
                 };
             }
@@ -548,14 +436,14 @@
         function renderDOM(tree, data) {
             //apply Model to DOM
             tree.data = data;
-            let element = tree.render();
+            let element = tree.initialize();
 
             document.querySelector("sports-list").replaceWith(element);
         }
 
         const vdom = approach5("sports-template");
         //const observable = new Observable({ sports: sports });
-        const observable = new Observable2({ sports: sports });
+        const observable = new Observable({ sports: sports });
         renderDOM(vdom, observable.data);
     </script>
 </body>
