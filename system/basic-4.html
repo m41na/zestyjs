@@ -171,8 +171,8 @@
                 if(!this.lifecycle.created){
                     if(obj.oncreate) obj.oncreate();
                     this.lifecycle.created = true;
-                    obj.data.observe(obj['render']);
                     let element = obj.render();
+                    obj.data.observe(obj.render);
                     if (obj.onmount) obj.onmount();
                     this.lifecycle.mounted = true;
                     return element;

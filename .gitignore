@@ -11,6 +11,7 @@ target/
 *.o
 *.s
 /data/**
+/dist/**
 nbactions.xml
 /nbproject/
 node_modules/
