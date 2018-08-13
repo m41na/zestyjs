@@ -42,14 +42,16 @@
 
                     let handler = {
                         get: function (obj, prop) {
+                            console.log('get -> obj: ', obj, ', prop: ', prop);
                             return obj[prop];
                         },
                         set: function (obj, prop, value) {
+                            console.log('set -> obj: ', obj, ', prop: ', prop);
                             if ('callback' === prop) {
                                 this.callback = value;
                                 return true;
                             }
-                            if ('length' !== prop && value != 'proxy') {
+                            if ('length' !== prop && value !== 'proxy') {
                                 obj.push(value);
                                 if (this.callback) this.callback();
                             }
@@ -83,28 +85,25 @@
                         return val;
                     },
                     set(newval) {
+                        console.log('set -> val: ', val, ', newval: ', newval);
                         val = newval; //save the new val
                         if(this.callback) this.callback(); //ignore for now
                         console.log('changed detected in ', key);
                     }
                 });
 
-                if (!obj.observe) {
-                    Object.defineProperty(obj, 'observe', {
-                        value: function (callback) {
-                            let onchange = callback;
-                            return function(){                                
-                                if(onchange) onchange();
-                            }
+                Object.defineProperty(obj, 'observe', {
+                    value: function (callback) {
+                        if(!obj.callback){
+                            console.log('set -> observer: ', callback);
+                            Object.defineProperty(obj, 'callback', {
+                                value: function(){
+                                    callback();
+                                }
+                            });
                         }
-                    });
-                }
-
-                if (!obj.callback) {
-                    Object.defineProperty(obj, 'callback', {
-                        value: obj['observe']()
-                    });
-                }
+                    }
+                });
             }
 
             function observeData(obj) {
@@ -172,7 +171,6 @@
                     if(obj.oncreate) obj.oncreate();
                     this.lifecycle.created = true;
                     let element = obj.render();
-                    obj.data.observe(obj.render);
                     if (obj.onmount) obj.onmount();
                     this.lifecycle.mounted = true;
                     return element;
@@ -199,6 +197,8 @@
                             return obj.element;
                         }
                     }(groups[1]);
+                    //observe model
+                    obj.onmount = ()=> obj.data.observe(obj.render);
                 }
             }
             else if (node.hasAttributes()) {
@@ -218,6 +218,8 @@
                                 }
                             }
                         }(groups[1]));
+                        //observe model
+                        obj.onmount = ()=> obj.data.observe(obj.render);
                     }
 
                     if (attrName === 'data-on-for') {
@@ -249,6 +251,8 @@
                                     return obj.element;
                                 }
                             }(groups[1], groups[3], groups[4]);
+                            //observe model
+                            obj.onmount = ()=> obj.data.observe(obj.render);
                         }
                         continue;
                     }
@@ -353,6 +357,8 @@
                                 return obj.element;
                             }
                         }(attrVal);
+                        //observe model
+                        obj.onmount = ()=> obj.data.observe(obj.render);
                         continue;
                     }
                     if (attrName === 'data-on-bind') {
