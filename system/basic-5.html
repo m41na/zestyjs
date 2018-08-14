@@ -31,7 +31,7 @@
 
         //-------------------- utils ---------------------//
         function makeReactive(obj, key) {
-            console.log('now observing [', key, '] ', obj);
+            console.log('adding reactivity [', key, '] ', obj);
 
             Object.defineProperty(obj, 'callbacks', {
                 value: []
@@ -39,6 +39,7 @@
 
             Object.defineProperty(obj, 'observe', {
                 value: function (callback) {
+                    console.log('now observing ', obj);
                     obj.callbacks.push(callback);
                 }
             });
@@ -216,6 +217,7 @@
                                     let frag = document.createDocumentFragment();
                                     for (var i = 0; i < for_ctx.length; i++) {
                                         let ctx = for_ctx[i];
+
                                         if (index) {
                                             ctx[index] = i;
                                         }
@@ -225,6 +227,7 @@
                                         let newElement = templ.content.firstElementChild;
                                         let newObj = mirrorDOM(newElement);
                                         newObj.data = ctx;
+                                        //newObj['onchange'] = newObj['render'];
                                         frag.appendChild(newObj.initialize());
                                     }
                                     obj.element = frag;
