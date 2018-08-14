@@ -30,43 +30,55 @@
         var sports = [{ sport: { name: 'Rugby' } }, { sport: { name: 'Soccer' } }, { sport: { name: 'Hockey' } }, { sport: { name: 'Tennis' } }];
 
         //-------------------- utils ---------------------//
+        function makeReactive(obj, key) {
+            console.log('now observing [', key, '] ', obj);
+
+            Object.defineProperty(obj, 'callbacks', {
+                value: []
+            });
+
+            Object.defineProperty(obj, 'observe', {
+                value: function (callback) {
+                    obj.callbacks.push(callback);
+                }
+            });
+
+            let val = obj[key];
+            Object.defineProperty(obj, key, {
+                get() {
+                    return val;
+                },
+                set(newval) {
+                    val = newval;
+                    obj.callbacks.forEach(callback=>callback());
+                    console.log('changed detected in ', key);
+                    return true;
+                }
+            });
+
+            // var handler = {
+            //     get(target, key) {
+            //         console.info(`Get on property "${key}"`);
+            //         return target[key];
+            //     },
+            //     set(target, key, value) {
+            //         console.log(`Change on property "${key}" detected`);
+            //         target[key] = value;
+            //         return true;
+            //     },
+            //     apply: function (target, thisArg, argumentsList) {
+            //         return thisArg[target].apply(this, argumentList);
+            //     },
+            //     deleteProperty: function (target, key) {
+            //         console.log("Deleted %s", key);
+            //         return true;
+            //     }
+            // };
+            // var proxy = new Proxy(obj, handler);
+            // return proxy;
+        }
 
         let Observable = function (data) {
-
-            class WatchArray extends Array {
-
-                constructor() {
-                    super();
-                    this.proxy;
-                    this.callback;
-
-                    let handler = {
-                        get: function (obj, prop) {
-                            return obj[prop];
-                        },
-                        set: function (obj, prop, value) {
-                            if ('callback' === prop) {
-                                this.callback = value;
-                                return true;
-                            }
-                            if ('length' !== prop && value != 'proxy') {
-                                obj.push(value);
-                                if (this.callback) this.callback();
-                            }
-                            return true;
-                        }
-                    };
-
-                    this.proxy = new Proxy(this, handler);
-                }
-
-                observe(callback) {
-                    this.callback = function () {
-                        return callback();
-                    }
-                }
-            }
-
             function isObject(value) {
                 return value && typeof value === 'object' && value.constructor == Object;
             }
@@ -75,59 +87,24 @@
                 return value && typeof value === 'object' && value.constructor == Array;
             }
 
-            function makeReactive(obj, key) {
-                let val = obj[key];
-                console.log('now observing ', key);
-                Object.defineProperty(obj, key, {
-                    get() {
-                        return val;
-                    },
-                    set(newval) {
-                        val = newval; //save the new val
-                        if(obj.callback) obj.callback(); 
-                        console.log('changed detected in ', key);
-                        return true;
-                    }
-                });
-
-                if (!obj.observe) {
-                    Object.defineProperty(obj, 'observe', {
-                        value: function (callback) {
-                            let onchange = callback;
-                            return function(){                                
-                                if(onchange) onchange();
-                            }
-                        }
-                    });
-                }
-
-                if (!obj.callback) {
-                    Object.defineProperty(obj, 'callback', {
-                        value: obj['observe']
-                    });
-                }
-            }
-
             function observeData(obj) {
                 for (let key in obj) {
-                    if (obj.hasOwnProperty(key)) {
+                    if (obj.hasOwnProperty(key)) {   
+                        makeReactive(obj, key);                    
                         //observe nested object values
                         let val = obj[key];
-                        makeReactive(obj, key);
-                        if (isObject(val)) {
+                        if(isObject(val)){
                             observeData(val);
+                            continue;
                         }
                         //observe array container
                         if (isArray(val)) {
-                            obj[key] = WatchArray.from(val).proxy;
+                            makeReactive(val, key);
                             for (let i = 0; i < val.length; i++) {
                                 if (isObject(val[i])) {
                                     observeData(val[i]);
                                 }
                             }
-                        }
-                        else {
-                            
                         }
                     }
                 }
@@ -163,6 +140,7 @@
             obj['oncreate'] = undefined;
             obj['onmount'] = undefined;
             obj['ondestroy'] = undefined;
+            obj['onchange'] = undefined;
             obj['lifecycle'] = {
                 created: false,
                 mounted: false,
@@ -173,7 +151,9 @@
                     if(obj.oncreate) obj.oncreate();
                     this.lifecycle.created = true;
                     let element = obj.render();
-                    obj.data.observe(obj.render);
+                    if(obj.onchange) {
+                        obj.data.observe(obj.onchange);
+                    }
                     if (obj.onmount) obj.onmount();
                     this.lifecycle.mounted = true;
                     return element;
@@ -200,6 +180,7 @@
                             return obj.element;
                         }
                     }(groups[1]);
+                     obj['onchange'] = obj['render'];               
                 }
             }
             else if (node.hasAttributes()) {
@@ -213,12 +194,13 @@
                     if (groups != null) {
                         obj['render'].push(function (expr) {
                             return function () {
-                                let evaled = evalWithContext(expr)(obj.data.data);
+                                let evaled = evalWithContext(expr)(obj.data);
                                 if (obj.element.nodeType == 1 && obj.element.hasAttribute(attrName)) {
                                     obj.element.setAttribute(attrName, attrVal.replace(/(@\{.+?\})/g, evaled));
                                 }
                             }
                         }(groups[1]));
+                         obj['onchange'] = obj['render'];
                     }
 
                     if (attrName === 'data-on-for') {
@@ -250,6 +232,7 @@
                                     return obj.element;
                                 }
                             }(groups[1], groups[3], groups[4]);
+                            obj['onchange'] = obj['render'];
                         }
                         continue;
                     }
@@ -443,7 +426,6 @@
         }
 
         const vdom = approach5("sports-template");
-        //const observable = new Observable({ sports: sports });
         const observable = new Observable({ sports: sports });
         renderDOM(vdom, observable.data);
     </script>
