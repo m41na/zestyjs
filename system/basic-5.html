@@ -30,9 +30,7 @@
         var sports = [{ sport: { name: 'Rugby' } }, { sport: { name: 'Soccer' } }, { sport: { name: 'Hockey' } }, { sport: { name: 'Tennis' } }];
 
         //-------------------- utils ---------------------//
-        function makeReactive(obj, key) {
-            console.log('adding reactivity [', key, '] ', obj);
-
+        function addProperties(obj){
             Object.defineProperty(obj, 'callbacks', {
                 value: []
             });
@@ -43,40 +41,35 @@
                     obj.callbacks.push(callback);
                 }
             });
+        }
 
-            let val = obj[key];
-            Object.defineProperty(obj, key, {
-                get() {
-                    return val;
+        function onChange(obj){
+            console.log('changed detected in ', obj);
+            if(obj.callbacks){
+                obj.callbacks.forEach(callback=>callback());
+            }
+        }
+
+        let applyProxy = function(obj){
+            const handler = {
+                get(target, property, receiver) {
+                    try {
+                        if(property === 'observe') return target[property];
+                        return new Proxy(target[property], handler);
+                    } catch (err) {
+                        return Reflect.get(target, property, receiver);
+                    }
                 },
-                set(newval) {
-                    val = newval;
-                    obj.callbacks.forEach(callback=>callback());
-                    console.log('changed detected in ', key);
-                    return true;
+                defineProperty(target, property, descriptor) {
+                    onChange(target);
+                    return Reflect.defineProperty(target, property, descriptor);
+                },
+                deleteProperty(target, property) {
+                    onChange(target);
+                    return Reflect.deleteProperty(target, property);
                 }
-            });
-
-            // var handler = {
-            //     get(target, key) {
-            //         console.info(`Get on property "${key}"`);
-            //         return target[key];
-            //     },
-            //     set(target, key, value) {
-            //         console.log(`Change on property "${key}" detected`);
-            //         target[key] = value;
-            //         return true;
-            //     },
-            //     apply: function (target, thisArg, argumentsList) {
-            //         return thisArg[target].apply(this, argumentList);
-            //     },
-            //     deleteProperty: function (target, key) {
-            //         console.log("Deleted %s", key);
-            //         return true;
-            //     }
-            // };
-            // var proxy = new Proxy(obj, handler);
-            // return proxy;
+            };
+            return new Proxy(obj, handler);
         }
 
         let Observable = function (data) {
@@ -91,7 +84,7 @@
             function observeData(obj) {
                 for (let key in obj) {
                     if (obj.hasOwnProperty(key)) {   
-                        makeReactive(obj, key);                    
+                        addProperties(obj);            
                         //observe nested object values
                         let val = obj[key];
                         if(isObject(val)){
@@ -100,7 +93,7 @@
                         }
                         //observe array container
                         if (isArray(val)) {
-                            makeReactive(val, key);
+                            addProperties(val, key);
                             for (let i = 0; i < val.length; i++) {
                                 if (isObject(val[i])) {
                                     observeData(val[i]);
@@ -114,7 +107,7 @@
             observeData(data);
 
             return {
-                data
+                data: applyProxy(data)
             }
         };
 
