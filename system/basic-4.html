@@ -31,113 +31,12 @@
 
         //-------------------- utils ---------------------//
 
-        let Observable = function (data) {
+        class Elem{
 
-            class WatchArray extends Array {
-
-                constructor() {
-                    super();
-                    this.proxy;
-                    this.callback;
-
-                    let handler = {
-                        get: function (obj, prop) {
-                            console.log('get -> obj: ', obj, ', prop: ', prop);
-                            return obj[prop];
-                        },
-                        set: function (obj, prop, value) {
-                            console.log('set -> obj: ', obj, ', prop: ', prop);
-                            if ('callback' === prop) {
-                                this.callback = value;
-                                return true;
-                            }
-                            if ('length' !== prop && value !== 'proxy') {
-                                obj.push(value);
-                                if (this.callback) this.callback();
-                            }
-                            return true;
-                        }
-                    };
-
-                    this.proxy = new Proxy(this, handler);
-                }
-
-                observe(callback) {
-                    this.callback = function () {
-                        return callback();
-                    }
-                }
+            constructor(){
+                
             }
-
-            function isObject(value) {
-                return value && typeof value === 'object' && value.constructor == Object;
-            }
-
-            function isArray(value) {
-                return value && typeof value === 'object' && value.constructor == Array;
-            }
-
-            function makeReactive(obj, key) {
-                let val = obj[key];
-                console.log('now observing ', key);
-                Object.defineProperty(obj, key, {
-                    get() {
-                        return val;
-                    },
-                    set(newval) {
-                        console.log('set -> val: ', val, ', newval: ', newval);
-                        val = newval; //save the new val
-                        if(obj.callback) obj.callback(); 
-                        console.log('changed detected in ', key);
-                        return true;
-                    }
-                });
-
-                Object.defineProperty(obj, 'observe', {
-                    value: function (callback) {
-                        if(!obj.callback){
-                            console.log('set -> observer: ', callback);
-                            Object.defineProperty(obj, 'callback', {
-                                value: function(){
-                                    callback();
-                                }
-                            });
-                        }
-                    }
-                });
-            }
-
-            function observeData(obj) {
-                for (let key in obj) {
-                    if (obj.hasOwnProperty(key)) {
-                        //observe nested object values
-                        let val = obj[key];
-                        makeReactive(obj, key);
-                        if (isObject(val)) {
-                            observeData(val);
-                        }
-                        //observe array container
-                        if (isArray(val)) {
-                            obj[key] = WatchArray.from(val).proxy;
-                            for (let i = 0; i < val.length; i++) {
-                                if (isObject(val[i])) {
-                                    observeData(val[i]);
-                                }
-                            }
-                        }
-                        else {
-                            
-                        }
-                    }
-                }
-            }
-
-            observeData(data);
-
-            return {
-                data
-            }
-        };
+        }
 
         function evalWithContext(expr) {
             return function (ctx) {

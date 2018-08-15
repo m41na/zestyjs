@@ -13,17 +13,9 @@
     </div>
 
     <template id="sports-template">
-        <div>
-            <p>Sports</p>
-            <ul class="items-list">
-                <li class="list-item" data-on-for="sport, index in sports">
-                    <span data-on-if="{show: index==0}" style="color:red;display:none;">@{index+1}</span>
-                    <span data-on-elif="{show: index==1}" style="color:yellow;display:none;">@{index+1}</span>
-                    <span data-on-else style="color:green;" data-on-text="sport.name"></span>
-                    <i>- @{sport.name}</i>
-                </li>
-            </ul>
-        </div>
+        <ul>
+            <li data-on-for="name in names">@{name}</li>
+        </ul>
     </template>
 
     <script>
@@ -61,25 +53,28 @@
                     }
                 },
                 defineProperty(target, property, descriptor) {
+                    let res = Reflect.defineProperty(target, property, descriptor);
                     onChange(target);
-                    return Reflect.defineProperty(target, property, descriptor);
+                    return res;
                 },
                 deleteProperty(target, property) {
+                    let res = Reflect.deleteProperty(target, property);
                     onChange(target);
-                    return Reflect.deleteProperty(target, property);
+                    return res;
                 }
             };
             return new Proxy(obj, handler);
         }
+            
+        function isObject(value) {
+            return value && typeof value === 'object' && value.constructor == Object;
+        }
+
+        function isArray(value) {
+            return value && typeof value === 'object' && value.constructor == Array;
+        }
 
         let Observable = function (data) {
-            function isObject(value) {
-                return value && typeof value === 'object' && value.constructor == Object;
-            }
-
-            function isArray(value) {
-                return value && typeof value === 'object' && value.constructor == Array;
-            }
 
             function observeData(obj) {
                 for (let key in obj) {
@@ -93,7 +88,7 @@
                         }
                         //observe array container
                         if (isArray(val)) {
-                            addProperties(val, key);
+                            addProperties(val);
                             for (let i = 0; i < val.length; i++) {
                                 if (isObject(val[i])) {
                                     observeData(val[i]);
@@ -168,7 +163,8 @@
                 if (groups != null) {
                     obj['render'] = function (expr) {
                         return function () {
-                            let evaled = evalWithContext(expr)(obj.data);
+                            //let evaled = evalWithContext(expr)(obj.data);
+                            let evaled = isObject(obj.data)? evalWithContext(expr)(obj.data) : obj.data
                             node.textContent = textVal.replace(/(@\{.+?\})/g, evaled);
                             //return element
                             return obj.element;
@@ -210,7 +206,6 @@
                                     let frag = document.createDocumentFragment();
                                     for (var i = 0; i < for_ctx.length; i++) {
                                         let ctx = for_ctx[i];
-
                                         if (index) {
                                             ctx[index] = i;
                                         }
@@ -327,7 +322,7 @@
                     if (attrName === 'data-on-text') {
                         obj['render'] = function (expr) {
                             return function () {
-                                let evaled = evalWithContext(expr)(obj.data);
+                                let evaled = isObject(obj.data)? evalWithContext(expr)(obj.data) : obj.data;
                                 obj.element.append(evaled);
                                 //return element
                                 return obj.element;
@@ -417,12 +412,11 @@
             //apply Model to DOM
             tree.data = data;
             let element = tree.initialize();
-
             document.querySelector("sports-list").replaceWith(element);
         }
 
         const vdom = approach5("sports-template");
-        const observable = new Observable({ sports: sports });
+        const observable = new Observable({ names: ['steve','mike','john'] });
         renderDOM(vdom, observable.data);
     </script>
 </body>
