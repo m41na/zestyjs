@@ -13,8 +13,13 @@
     </div>
 
     <template id="sports-template">
-        <ul>
-            <li data-on-for="name in names">@{name}</li>
+        <ul class="items-list">
+            <li class="list-item" data-on-for="sport, index in sports">
+                <span data-on-if="{show: index==0}" style="color:red;display:none;">@{index+1}</span>
+                <span data-on-elif="{show: index==1}" style="color:yellow;display:none;">@{index+1}</span>
+                <span data-on-else style="color:green;" data-on-text="sport.name"></span>
+                <i>- @{sport.name}</i>
+            </li>
         </ul>
     </template>
 
@@ -22,7 +27,7 @@
         var sports = [{ sport: { name: 'Rugby' } }, { sport: { name: 'Soccer' } }, { sport: { name: 'Hockey' } }, { sport: { name: 'Tennis' } }];
 
         //-------------------- utils ---------------------//
-        function addProperties(obj){
+        function addProperties(obj) {
             Object.defineProperty(obj, 'callbacks', {
                 value: []
             });
@@ -33,24 +38,45 @@
                     obj.callbacks.push(callback);
                 }
             });
+
+            Object.defineProperty(obj, 'ref', {
+                value: undefined,
+                writable: true
+            });
+
+            Object.defineProperty(obj, 'bubble', {
+                value: function(){
+                    onChange(obj.ref);
+                }
+            });
         }
 
-        function onChange(obj){
+        function onChange(obj) {
             console.log('changed detected in ', obj);
-            if(obj.callbacks){
-                obj.callbacks.forEach(callback=>callback());
+            if (obj && obj.callbacks) {
+                if(obj.callbacks.length > 0){
+                    obj.callbacks.forEach(callback => callback());
+                }
+                else{
+                    obj.bubble();
+                }
             }
         }
 
-        let applyProxy = function(obj){
+        let applyProxy = function (obj) {
             const handler = {
                 get(target, property, receiver) {
                     try {
-                        if(property === 'observe') return target[property];
+                        if (['observe','length'].includes(property)) return target[property];
                         return new Proxy(target[property], handler);
                     } catch (err) {
                         return Reflect.get(target, property, receiver);
                     }
+                },
+                set: function (target, key, value, receiver) {
+                    console.log('set ' + key);
+                    Reflect.set(target, key, value, receiver);
+                    return true
                 },
                 defineProperty(target, property, descriptor) {
                     let res = Reflect.defineProperty(target, property, descriptor);
@@ -65,7 +91,7 @@
             };
             return new Proxy(obj, handler);
         }
-            
+
         function isObject(value) {
             return value && typeof value === 'object' && value.constructor == Object;
         }
@@ -78,20 +104,23 @@
 
             function observeData(obj) {
                 for (let key in obj) {
-                    if (obj.hasOwnProperty(key)) {   
-                        addProperties(obj);            
+                    if (key !== 'ref' && obj.hasOwnProperty(key)) {
+                        addProperties(obj);
                         //observe nested object values
                         let val = obj[key];
-                        if(isObject(val)){
+                        if (isObject(val)) {
                             observeData(val);
+                            val.ref = obj;
                             continue;
                         }
+                        
                         //observe array container
                         if (isArray(val)) {
                             addProperties(val);
                             for (let i = 0; i < val.length; i++) {
                                 if (isObject(val[i])) {
                                     observeData(val[i]);
+                                    val[i].ref = val;
                                 }
                             }
                         }
@@ -135,12 +164,12 @@
                 mounted: false,
                 destroyed: false
             };
-            obj['initialize'] = function(){
-                if(!this.lifecycle.created){
-                    if(obj.oncreate) obj.oncreate();
+            obj['initialize'] = function () {
+                if (!this.lifecycle.created) {
+                    if (obj.oncreate) obj.oncreate();
                     this.lifecycle.created = true;
                     let element = obj.render();
-                    if(obj.onchange) {
+                    if (obj.onchange) {
                         obj.data.observe(obj.onchange);
                     }
                     if (obj.onmount) obj.onmount();
@@ -151,7 +180,7 @@
             obj['teardown'] = function () {
                 if (!this.lifecycle.destroyed) {
                     //remove from DOM before destroy callback
-                    if(obj.element) obj.element.remove();
+                    if (obj.element) obj.element.remove();
                     if (obj.ondestroy) obj.ondestroy();
                     this.lifecycle.destroyed = true;
                 }
@@ -163,14 +192,13 @@
                 if (groups != null) {
                     obj['render'] = function (expr) {
                         return function () {
-                            //let evaled = evalWithContext(expr)(obj.data);
-                            let evaled = isObject(obj.data)? evalWithContext(expr)(obj.data) : obj.data
+                            let evaled = evalWithContext(expr)(obj.data);
                             node.textContent = textVal.replace(/(@\{.+?\})/g, evaled);
                             //return element
                             return obj.element;
                         }
                     }(groups[1]);
-                     obj['onchange'] = obj['render'];               
+                    obj['onchange'] = obj['render'];
                 }
             }
             else if (node.hasAttributes()) {
@@ -190,7 +218,7 @@
                                 }
                             }
                         }(groups[1]));
-                         obj['onchange'] = obj['render'];
+                        obj['onchange'] = obj['render'];
                     }
 
                     if (attrName === 'data-on-for') {
@@ -322,12 +350,16 @@
                     if (attrName === 'data-on-text') {
                         obj['render'] = function (expr) {
                             return function () {
-                                let evaled = isObject(obj.data)? evalWithContext(expr)(obj.data) : obj.data;
+                                let evaled = evalWithContext(expr)(obj.data);
+                                while (obj.element.hasChildNodes()) {
+                                    obj.element.removeChild(obj.element.lastChild);
+                                }
                                 obj.element.append(evaled);
                                 //return element
                                 return obj.element;
                             }
                         }(attrVal);
+                        obj['onchange'] = obj['render'];
                         continue;
                     }
                     if (attrName === 'data-on-bind') {
@@ -416,7 +448,7 @@
         }
 
         const vdom = approach5("sports-template");
-        const observable = new Observable({ names: ['steve','mike','john'] });
+        const observable = new Observable({ sports: sports });
         renderDOM(vdom, observable.data);
     </script>
 </body>
