@@ -27,113 +27,138 @@
         var sports = [{ sport: { name: 'Rugby' } }, { sport: { name: 'Soccer' } }, { sport: { name: 'Hockey' } }, { sport: { name: 'Tennis' } }];
 
         //-------------------- utils ---------------------//
-        function addProperties(obj) {
-            Object.defineProperty(obj, 'callbacks', {
-                value: []
-            });
+        class Model{
 
-            Object.defineProperty(obj, 'observe', {
-                value: function (callback) {
-                    console.log('now observing ', obj);
-                    obj.callbacks.push(callback);
-                }
-            });
-
-            Object.defineProperty(obj, 'ref', {
-                value: undefined,
-                writable: true
-            });
-
-            Object.defineProperty(obj, 'bubble', {
-                value: function(){
-                    onChange(obj.ref);
-                }
-            });
-        }
-
-        function onChange(obj) {
-            console.log('changed detected in ', obj);
-            if (obj && obj.callbacks) {
-                if(obj.callbacks.length > 0){
-                    obj.callbacks.forEach(callback => callback());
-                }
-                else{
-                    obj.bubble();
-                }
+            constructor(data){
+                this.data = this.observe(data);
             }
-        }
 
-        let applyProxy = function (obj) {
-            const handler = {
-                get(target, property, receiver) {
-                    try {
-                        if (['observe','length'].includes(property)) return target[property];
-                        return new Proxy(target[property], handler);
-                    } catch (err) {
-                        return Reflect.get(target, property, receiver);
+            watch(obj, key){
+                let val = obj[key];
+                let self = this;
+
+                Object.defineProperty(obj, key, {
+                    get: function(key){
+                        return val;
+                    },
+                    set: function(newval){
+                        val = newval;
+                        self.onChange(obj);
                     }
-                },
-                set: function (target, key, value, receiver) {
-                    console.log('set ' + key);
-                    Reflect.set(target, key, value, receiver);
-                    return true
-                },
-                defineProperty(target, property, descriptor) {
-                    let res = Reflect.defineProperty(target, property, descriptor);
-                    onChange(target);
-                    return res;
-                },
-                deleteProperty(target, property) {
-                    let res = Reflect.deleteProperty(target, property);
-                    onChange(target);
-                    return res;
+                });
+            }
+
+            proxy(obj){
+                let self = this;
+
+                class MArray extends Array{
+
+                    constructor(arr){
+                        super();
+                    }
+
+                    pop(){
+                        super.pop();
+                        self.onChange(this);
+                    }
                 }
-            };
-            return new Proxy(obj, handler);
-        }
 
-        function isObject(value) {
-            return value && typeof value === 'object' && value.constructor == Object;
-        }
+                return MArray.from(obj);
+            }
 
-        function isArray(value) {
-            return value && typeof value === 'object' && value.constructor == Array;
-        }
+            enhance(obj){
+                let self = this;
 
-        let Observable = function (data) {
+                Object.defineProperty(obj, 'notify', {
+                    value: []
+                });
 
-            function observeData(obj) {
+                Object.defineProperty(obj, 'observe', {
+                    value: function (callback) {
+                        console.log('now observing ', obj);
+                        obj.notify.push(callback);
+                    }
+                });
+
+                Object.defineProperty(obj, 'ref', {
+                    value: undefined,
+                    writable: true
+                });
+
+                Object.defineProperty(obj, 'bubble', {
+                    value: function(){
+                        self.onChange(obj.ref);
+                    }
+                });
+            }
+
+            observe(obj) {
                 for (let key in obj) {
                     if (key !== 'ref' && obj.hasOwnProperty(key)) {
-                        addProperties(obj);
+                        this.watch(obj, key);
+                        this.enhance(obj);
+
                         //observe nested object values
                         let val = obj[key];
-                        if (isObject(val)) {
-                            observeData(val);
+                        if (this.isObject(val)) {
+                            this.observe(val);
                             val.ref = obj;
                             continue;
                         }
                         
                         //observe array container
-                        if (isArray(val)) {
-                            addProperties(val);
+                        if (this.isArray(val)) {
+                            this.enhance(val);
+                            //watch for operations affecting length (pop, splice, shift, unshift)
+                            obj[key] = this.proxy(val);
                             for (let i = 0; i < val.length; i++) {
-                                if (isObject(val[i])) {
-                                    observeData(val[i]);
+                                if (this.isObject(val[i])) {
+                                    this.observe(val[i]);
                                     val[i].ref = val;
                                 }
                             }
                         }
                     }
                 }
+                return obj;
             }
 
-            observeData(data);
-
-            return {
-                data: applyProxy(data)
+            onChange(obj){
+                console.log('changed detected in ', obj);
+                if (obj && obj.notify) {
+                    if(obj.notify.length > 0){
+                        obj.notify.forEach(callback => callback());
+                    }
+                    else{
+                        obj.bubble();
+                    }
+                }
             }
-        };
+
+            push(target, value){
+
+            }
+
+            splice(target, value){
+
+            }
+
+            add(target, key, value){
+
+            }
+
+            remove(target, key){
+
+            }
+
+            isObject(value) {
+                return value && typeof value === 'object' && value.constructor == Object;
+            }
+
+            isArray(value) {
+                return value && typeof value === 'object' && value.constructor == Array;
+            }
+        }
 
         function evalWithContext(expr) {
             return function (ctx) {
@@ -448,7 +473,7 @@
         }
 
         const vdom = approach5("sports-template");
-        const observable = new Observable({ sports: sports });
+        const observable = new Model({ sports: sports });
         renderDOM(vdom, observable.data);
     </script>
 </body>
