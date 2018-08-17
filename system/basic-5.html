@@ -48,7 +48,7 @@
                 });
             }
 
-            proxy(obj){
+            wrap(obj){
                 let self = this;
 
                 class MArray extends Array{
@@ -59,6 +59,13 @@
 
                     pop(){
                         super.pop();
+                        self.onChange(this);
+                    }
+
+                    splice(index, count, newvals){
+                        let args = [index, count];
+                        if(newvals) args.concat(newvals);
+                        Reflect.apply(super.splice, this, args);
                         self.onChange(this);
                     }
                 }
@@ -108,9 +115,11 @@
                         
                         //observe array container
                         if (this.isArray(val)) {
-                            this.enhance(val);
+                            let array = this.wrap(val);
+                            this.enhance(array);
+                            array.ref = obj;
                             //watch for operations affecting length (pop, splice, shift, unshift)
-                            obj[key] = this.proxy(val);
+                            obj[key] = array;
                             for (let i = 0; i < val.length; i++) {
                                 if (this.isObject(val[i])) {
                                     this.observe(val[i]);
@@ -173,6 +182,13 @@
             }
         }
 
+        let selectorId = (function (){
+            let num = 0;
+            return function(type){
+                return type.concat(num++);
+            }
+        })();
+
         //approach 5 - pushing approach4 further - get DOM to react with data change
         //problem - difficult to target the data changing in the DOM
         function mirrorDOM(node) {
@@ -181,25 +197,39 @@
             obj['methods'] = {};
             obj['parent'] = undefined;
             obj['oncreate'] = undefined;
-            obj['onmount'] = undefined;
             obj['ondestroy'] = undefined;
             obj['onchange'] = undefined;
+            obj['selector'] = undefined;
             obj['lifecycle'] = {
                 created: false,
                 mounted: false,
                 destroyed: false
             };
             obj['initialize'] = function () {
-                if (!this.lifecycle.created) {
+                if (!obj.lifecycle.created) {
                     if (obj.oncreate) obj.oncreate();
-                    this.lifecycle.created = true;
+                    obj.lifecycle.created = true;
+
                     let element = obj.render();
                     if (obj.onchange) {
                         obj.data.observe(obj.onchange);
-                    }
-                    if (obj.onmount) obj.onmount();
-                    this.lifecycle.mounted = true;
+                    }                    
                     return element;
+                }
+            };
+            obj['onmount'] = function(){
+                if(!obj.lifecycle.mounted){
+                    if(obj.selector){
+                        obj.element = document.querySelector(obj.selector);
+                    }
+                    obj.lifecycle.mounted = true;
+
+                    if (obj.children) {
+                        for (let i = 0; i < obj.children.length; i++) {
+                            let childElement = obj.children[i];
+                            childElement.onmount();
+                        }
+                    }
                 }
             };
             obj['teardown'] = function () {
@@ -223,7 +253,8 @@
                             return obj.element;
                         }
                     }(groups[1]);
-                    obj['onchange'] = obj['render'];
+                    obj['update'] = obj['render'];
+                    obj['onchange'] = obj['update'];
                 }
             }
             else if (node.hasAttributes()) {
@@ -243,7 +274,8 @@
                                 }
                             }
                         }(groups[1]));
-                        obj['onchange'] = obj['render'];
+                        obj['update'] = obj['render'];
+                        obj['onchange'] = obj['update'];
                     }
 
                     if (attrName === 'data-on-for') {
@@ -268,15 +300,41 @@
                                         let newElement = templ.content.firstElementChild;
                                         let newObj = mirrorDOM(newElement);
                                         newObj.data = ctx;
-                                        //newObj['onchange'] = newObj['render'];
+                                        //initialize newElement
                                         frag.appendChild(newObj.initialize());
+                                        //set selector value
+                                        let elid = selectorId(`f${key}${i}`);
+                                        newObj['selector'] = `[data-elid='${elid}']`;
+                                        newObj.element.dataset.elid = elid;
                                     }
                                     obj.element = frag;
                                     //return element
                                     return obj.element;
                                 }
                             }(groups[1], groups[3], groups[4]);
-                            obj['onchange'] = obj['render'];
+                            obj['update'] = function(key, index, items){
+                                return function(){
+                                    //recreate element with new model
+                                    let for_ctx = evalWithContext(items)(obj.data);
+                                    let frag = document.createDocumentFragment();
+                                    for (var i = 0; i < for_ctx.length; i++) {
+                                        let ctx = for_ctx[i];
+                                        if (index) {
+                                            ctx[index] = i;
+                                        }
+                                        //create element
+                                        let templ = document.createElement('template');
+                                        templ.innerHTML = obj.template;
+                                        let newElement = templ.content.firstElementChild;
+                                        let newObj = mirrorDOM(newElement);
+                                        newObj.data = ctx;
+                                        frag.appendChild(newObj.initialize());
+                                    }                                    
+                                    //replace element in the DOM (identified by unique key)
+                                   obj.element.replaceWith(frag);
+                                }
+                            }(groups[1], groups[3], groups[4]);
+                            obj['onchange'] = obj['update'];
                         }
                         continue;
                     }
@@ -470,6 +528,7 @@
             tree.data = data;
             let element = tree.initialize();
             document.querySelector("sports-list").replaceWith(element);
+            tree.onmount();
         }
 
         const vdom = approach5("sports-template");
