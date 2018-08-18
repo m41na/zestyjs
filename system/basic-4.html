@@ -30,11 +30,159 @@
         var sports = [{ sport: { name: 'Rugby' } }, { sport: { name: 'Soccer' } }, { sport: { name: 'Hockey' } }, { sport: { name: 'Tennis' } }];
 
         //-------------------- utils ---------------------//
+        class Model {
 
-        class Elem{
+            constructor(data) {
+                this.data = this.observe(data);
+            }
 
-            constructor(){
-                
+            watch(obj, key) {
+                let val = obj[key];
+                let self = this;
+
+                Object.defineProperty(obj, key, {
+                    get: function (key) {
+                        return val;
+                    },
+                    set: function (newval) {
+                        val = newval;
+                        self.onChange(obj);
+                    }
+                });
+            }
+
+            wrap(obj) {
+                let self = this;
+
+                class MArray extends Array {
+
+                    constructor(arr) {
+                        super();
+                    }
+
+                    pop() {
+                        super.pop();
+                        self.onChange(this);
+                    }
+
+                    splice(index, count, newvals) {
+                        let args = [index, count];
+                        if (newvals) args.concat(newvals);
+                        Reflect.apply(super.splice, this, args);
+                        self.onChange(this);
+                    }
+                }
+
+                return MArray.from(obj);
+            }
+
+            enhance(obj) {
+                let self = this;
+
+                Object.defineProperty(obj, 'notify', {
+                    value: []
+                });
+
+                Object.defineProperty(obj, 'observe', {
+                    value: function (callback) {
+                        console.log('now observing ', obj);
+                        obj.notify.push(callback);
+                    }
+                });
+
+                Object.defineProperty(obj, 'ref', {
+                    value: undefined,
+                    writable: true
+                });
+
+                Object.defineProperty(obj, 'bubble', {
+                    value: function () {
+                        self.onChange(obj.ref);
+                    }
+                });
+            }
+
+            observe(obj) {
+                for (let key in obj) {
+                    if (key !== 'ref' && obj.hasOwnProperty(key)) {
+                        this.watch(obj, key);
+                        this.enhance(obj);
+
+                        //observe nested object values
+                        let val = obj[key];
+                        if (this.isObject(val)) {
+                            this.observe(val);
+                            val.ref = obj;
+                            continue;
+                        }
+
+                        //observe array container
+                        if (this.isArray(val)) {
+                            let array = this.wrap(val);
+                            this.enhance(array);
+                            array.ref = obj;
+                            //watch for operations affecting length (pop, splice, shift, unshift)
+                            obj[key] = array;
+                            for (let i = 0; i < val.length; i++) {
+                                if (this.isObject(val[i])) {
+                                    this.observe(val[i]);
+                                    val[i].ref = array;
+                                }
+                            }
+                        }
+                    }
+                }
+                return obj;
+            }
+
+            onChange(obj) {
+                console.log('changed detected in ', obj);
+                if (obj && obj.notify) {
+                    if (obj.notify.length > 0) {
+                        obj.notify.forEach(callback => callback());
+                    }
+                    else {
+                        obj.bubble();
+                    }
+                }
+            }
+
+            push$(target, value) {
+                const observable = new Model(value);
+                target.push(observable.data);
+                observable.data.ref = target;
+                this.onChange(target);
+            }
+
+            splice$(target, index, count, newvals) {
+                if (!newvals) {
+                    throw Error('expecting value to insert with this method');
+                }
+                const observable = new Model(newvals);
+                let args = [index, count].concat(observable.data);
+                Reflect.apply(target.splice, this, args);
+                observable.data.ref = target;
+                self.onChange(this);
+            }
+
+            set$(target, key, value) {
+                const observable = new Model(value);
+                target[key] = observable.data;
+                observable.data.ref = target;
+                this.onChange(target);
+            }
+
+            delete$(target, key) {
+                delete target[key];
+                this.onChange(target);
+            }
+
+            isObject(value) {
+                return value && typeof value === 'object' && value.constructor == Object;
+            }
+
+            isArray(value) {
+                return value && typeof value === 'object' && value.constructor == Array;
             }
         }
 
@@ -51,36 +199,60 @@
             }
         }
 
+        let selectorId = (function () {
+            let num = 0;
+            return function (type) {
+                return type.concat(num++);
+            }
+        })();
+
         //approach 5 - pushing approach4 further - get DOM to react with data change
         //problem - difficult to target the data changing in the DOM
         function mirrorDOM(node) {
             let obj = {};
             obj['data'] = {};
             obj['methods'] = {};
+            obj['elids'] = [];
             obj['parent'] = undefined;
             obj['oncreate'] = undefined;
-            obj['onmount'] = undefined;
             obj['ondestroy'] = undefined;
+            obj['onchange'] = undefined;
             obj['lifecycle'] = {
                 created: false,
                 mounted: false,
                 destroyed: false
             };
-            obj['initialize'] = function(){
-                if(!this.lifecycle.created){
-                    if(obj.oncreate) obj.oncreate();
-                    this.lifecycle.created = true;
+            obj['initialize'] = function () {
+                if (!obj.lifecycle.created) {
+                    if (obj.oncreate) obj.oncreate();
+                    obj.lifecycle.created = true;
+
                     let element = obj.render();
-                    obj.data.observe(obj.render);
-                    if (obj.onmount) obj.onmount();
-                    this.lifecycle.mounted = true;
+                    if (obj.onchange) {
+                        obj.data.observe(obj.onchange);
+                    }
                     return element;
+                }
+            };
+            obj['onmount'] = function () {
+                if (!obj.lifecycle.mounted) {
+                    if (obj.selector) {
+                        obj.element = document.querySelector(obj.selector);
+                    }
+                    obj.lifecycle.mounted = true;
+
+                    if (obj.children) {
+                        for (let i = 0; i < obj.children.length; i++) {
+                            let childElement = obj.children[i];
+                            childElement.onmount();
+                        }
+                    }
                 }
             };
             obj['teardown'] = function () {
                 if (!this.lifecycle.destroyed) {
                     //remove from DOM before destroy callback
-                    if(obj.element) obj.element.remove();
+                    if (obj.element) obj.element.remove();
                     if (obj.ondestroy) obj.ondestroy();
                     this.lifecycle.destroyed = true;
                 }
@@ -98,8 +270,8 @@
                             return obj.element;
                         }
                     }(groups[1]);
-                    //observe model
-                    obj.onmount = ()=> obj.data.observe(obj.render);
+                    obj['update'] = obj['render'];
+                    obj['onchange'] = obj['update'];
                 }
             }
             else if (node.hasAttributes()) {
@@ -113,14 +285,14 @@
                     if (groups != null) {
                         obj['render'].push(function (expr) {
                             return function () {
-                                let evaled = evalWithContext(expr)(obj.data.data);
+                                let evaled = evalWithContext(expr)(obj.data);
                                 if (obj.element.nodeType == 1 && obj.element.hasAttribute(attrName)) {
                                     obj.element.setAttribute(attrName, attrVal.replace(/(@\{.+?\})/g, evaled));
                                 }
                             }
                         }(groups[1]));
-                        //observe model
-                        obj.onmount = ()=> obj.data.observe(obj.render);
+                        obj['update'] = obj['render'];
+                        obj['onchange'] = obj['update'];
                     }
 
                     if (attrName === 'data-on-for') {
@@ -145,15 +317,34 @@
                                         let newElement = templ.content.firstElementChild;
                                         let newObj = mirrorDOM(newElement);
                                         newObj.data = ctx;
+                                        //initialize newElement
                                         frag.appendChild(newObj.initialize());
+                                        //save element ids
+                                        let elid = selectorId(`f${key}${i}`);
+                                        obj['elids'].push(`[data-elid='${elid}']`);
+                                        newObj.element.dataset.elid = elid;
                                     }
                                     obj.element = frag;
                                     //return element
                                     return obj.element;
                                 }
                             }(groups[1], groups[3], groups[4]);
-                            //observe model
-                            obj.onmount = ()=> obj.data.observe(obj.render);
+                            obj['update'] = function (key, index, items) {
+                                return function () {
+                                    let old = obj.elids.splice(0, obj.elids.length);
+                                    let elements = obj.render(key, index, items);
+                                    //replace elements in the DOM (identified by element keys)
+                                    let parent;
+                                    while (old.length > 0) {
+                                        let child = document.querySelector(old.splice(0, 1));
+                                        parent = child.parentElement;
+                                        parent.removeChild(child);
+                                    }
+                                    //add new elements
+                                    parent.appendChild(elements);
+                                }
+                            }(groups[1], groups[3], groups[4]);
+                            obj['onchange'] = obj['update'];
                         }
                         continue;
                     }
@@ -253,13 +444,15 @@
                         obj['render'] = function (expr) {
                             return function () {
                                 let evaled = evalWithContext(expr)(obj.data);
+                                while (obj.element.hasChildNodes()) {
+                                    obj.element.removeChild(obj.element.lastChild);
+                                }
                                 obj.element.append(evaled);
                                 //return element
                                 return obj.element;
                             }
                         }(attrVal);
-                        //observe model
-                        obj.onmount = ()=> obj.data.observe(obj.render);
+                        obj['onchange'] = obj['render'];
                         continue;
                     }
                     if (attrName === 'data-on-bind') {
@@ -344,13 +537,12 @@
             //apply Model to DOM
             tree.data = data;
             let element = tree.initialize();
-
             document.querySelector("sports-list").replaceWith(element);
+            tree.onmount();
         }
 
         const vdom = approach5("sports-template");
-        //const observable = new Observable({ sports: sports });
-        const observable = new Observable({ sports: sports });
+        const observable = new Model({ sports: sports });
         renderDOM(vdom, observable.data);
     </script>
 </body>
