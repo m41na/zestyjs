@@ -1,0 +1,60 @@
+<html>
+
+<head>
+    <title>User Details</title>
+</head>
+
+<body>
+    <div id="user-card">
+        <link rel="stylesheet" href="/user-card.css">
+        <user-card></user-card>
+    </div>
+
+    <template id="user-card-template">
+        <div class="card__user-card-container">
+            <h2 class="card__name">
+                <span class="card__full-name">@{user.name}</span> (
+                <span class="card__user-name">@{user.username}</span>)
+            </h2>
+            <p>Website: <a class="card__website">@{user.website}</a></p>
+            <div class="card__hidden-content" data-on-if="{show: show}">
+                <p class="card__address" data-on-text="user.address.street"></p>
+            </div>
+            <button class="card__details-btn" data-on-event="{click: toggle}">More Details</button>
+        </div>
+    </template>
+
+    <script type="module">
+        import { DomComponents } from './basic-dom.js';
+
+        fetch(`http://localhost:9080/user-card.json`)
+            .then((response) => response.text())
+            .then((responseText) => {
+                let data = JSON.parse(responseText);
+                //create component
+                let self = this;
+                let dom = new DomComponents({
+                    template: "user-card-template",
+                    data: {
+                        user: data,
+                        show: true
+                    },
+                    methods: {
+                        show(el) {
+                            el.style.display = dom.$data.show? '' : 'none';
+                        },
+                        toggle(ev) {
+                            dom.$data.show = !dom.$data.show;
+                        }
+                    }
+                });
+                
+                dom.mount("user-card");
+            })
+            .catch((error) => {
+                console.error(error);
+            });
+    </script>
+</body>
+
+</html>

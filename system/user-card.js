@@ -27,7 +27,7 @@ class UserCard extends HTMLElement {
         const userId = this.getAttribute('user-id');
 
         // Fetch the data for that user Id from the API and call the render method with this data
-        fetch(`http://localhost:8080/user-card.json`)
+        fetch(`http://localhost:9080/user-card.json`)
             .then((response) => response.text())
             .then((responseText) => {
                 this.render(JSON.parse(responseText));
