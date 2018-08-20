@@ -324,6 +324,54 @@ class DomNode {
                     }
                     continue;
                 }
+                if (attrName === 'data-on-show') {
+                    node.removeAttribute(attrName);
+                    //preserve the markup in template
+                    obj['template'] = node.outerHTML;
+                    var if_reg = /\{(.+?\s*):\s*(.+?)\}/g;
+                    let groups = if_reg.exec(attrVal);
+                    if (groups != null) {
+                        obj['render'] = function (handler, expr) {
+                            return function () {
+                                let evaled = DomNode.evalWithContext(expr)(obj.data);
+                                obj.parent['if_expr'] = evaled;
+                                if (evaled) {
+                                    let frag = document.createDocumentFragment();
+                                    //create element
+                                    let templ = document.createElement('template');
+                                    templ.innerHTML = obj.template;
+                                    let newElement = templ.content.firstElementChild;
+                                    let newObj = new DomNode(newElement).value;
+                                    newObj.data = obj.data;
+                                    newObj.methods = obj.methods;
+                                    frag.appendChild(newObj.initialize());
+                                    //save element ids
+                                    let elid = getElid(`sho${handler.toString()}`);
+                                    obj['elids'].push(`[data-elid='${elid}']`);
+                                    newObj.element.dataset.elid = elid;
+                                    //invoke handler
+                                    newObj.methods[handler].call(newObj, frag.firstElementChild);
+                                    //set element value
+                                    obj.element = frag;
+                                    //return element
+                                    return obj.element;
+                                }
+                            }
+                        }(groups[1], groups[2]);
+                        obj['update'] = function (handler, expr) {
+                            return function () {
+                                let evaled = DomNode.evalWithContext(expr)(obj.data);
+                                obj.parent['if_expr'] = evaled;
+                                let elid = obj.elids[0];
+                                //replace elements in the DOM (identified by element keys)
+                                let child = document.querySelector(elid);
+                                child.style.display = evaled? '' : 'none';
+                            }
+                        }(groups[1], groups[2]);
+                        obj['onchange'] = obj['update'];
+                    }
+                    continue;
+                }
                 if (attrName === 'data-on-if') {
                     node.removeAttribute(attrName);
                     //preserve the markup in template
@@ -487,12 +535,7 @@ class DomNode {
                             }
                         }(groups[2], groups[3]);
                         obj['onchange'] = obj['render'];
-                        continue;
                     }
-                }
-                if (attrName === 'data-on-bind') {
-                    obj.attributes.push({ name: attrName, value: { expr: attrVal } });
-                    continue;
                 }
                 obj.attributes.push({
                     name: attrName,
@@ -525,7 +568,7 @@ class DomNode {
                     let templ = document.createElement('template');
                     templ.innerHTML = obj.template;
                     obj.element = templ.content.firstElementChild;
-                    if (obj.children.length) {
+                    if (obj.children && obj.children.length) {
                         for (let i = 0; i < obj.children.length; i++) {
                             let childElement = obj.children[i];
                             childElement.data = obj.data;

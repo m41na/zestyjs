@@ -17,7 +17,7 @@
                 <span class="card__user-name">@{user.username}</span>)
             </h2>
             <p>Website: <a class="card__website">@{user.website}</a></p>
-            <div class="card__hidden-content" data-on-if="{show: show}">
+            <div class="card__hidden-content" data-on-show="{show: show}">
                 <p class="card__address" data-on-text="user.address.street"></p>
             </div>
             <button class="card__details-btn" data-on-event="{click: toggle}">More Details</button>
