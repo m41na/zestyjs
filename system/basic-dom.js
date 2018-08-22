@@ -190,12 +190,9 @@ class DomNode {
         obj['oncreate'] = undefined;
         obj['ondestroy'] = undefined;
         obj['onchange'] = undefined;
-        obj['conditional'] = false;
-        obj['conditions'] = [];
         obj['lifecycle'] = {
             created: false,
-            mounted: false,
-            destroyed: false
+            mounted: false
         };
         obj['initialize'] = function () {
             if (!obj.lifecycle.created) {
@@ -222,14 +219,6 @@ class DomNode {
                         childElement.onmount();
                     }
                 }
-            }
-        };
-        obj['teardown'] = function () {
-            if (!obj.lifecycle.destroyed) {
-                //remove from DOM before destroy callback
-                if (obj.element) obj.element.remove();
-                if (obj.ondestroy) obj.ondestroy();
-                obj.lifecycle.destroyed = true;
             }
         };
         if (node.nodeType === 3) {
@@ -293,6 +282,7 @@ class DomNode {
                                     let newObj = new DomNode(newElement).value;
                                     newObj.data = ctx;
                                     newObj.methods = obj.methods;
+                                    newObj.parent = obj;
                                     //initialize newElement
                                     frag.appendChild(newObj.initialize());
                                     //save element ids
@@ -334,7 +324,6 @@ class DomNode {
                         obj['render'] = function (handler, expr) {
                             return function () {
                                 let evaled = DomNode.evalWithContext(expr)(obj.data);
-                                obj.parent['if_expr'] = evaled;
                                 if (evaled) {
                                     let frag = document.createDocumentFragment();
                                     //create element
@@ -361,7 +350,6 @@ class DomNode {
                         obj['update'] = function (handler, expr) {
                             return function () {
                                 let evaled = DomNode.evalWithContext(expr)(obj.data);
-                                obj.parent['if_expr'] = evaled;
                                 let elid = obj.elids[0];
                                 //replace elements in the DOM (identified by element keys)
                                 let child = document.querySelector(elid);
@@ -376,19 +364,17 @@ class DomNode {
                     node.removeAttribute(attrName);
                     //preserve the markup in template
                     obj['template'] = node.outerHTML;
-
-                    //mark node as conditional - it holds all 'conditions' for this IF
-                    obj['conditional'] = true;
-                    let condition_nodes = [];
-
                     //if-condition
                     var if_reg = /\{(.+?\s*):\s*(.+?)\}/g;
                     let groups = if_reg.exec(attrVal);
                     if (groups != null) {
-                        obj['render'] = function (handler, expr) {
+                        obj['evaluate'] = function(){
+                            let evaled = DomNode.evalWithContext(groups[2])(obj.data);
+                            return evaled;
+                        };
+                        obj['oncreate'] = function (handler) {
                             return function () {
-                                let evaled = DomNode.evalWithContext(expr)(obj.data);
-                                obj.parent['if_expr'] = evaled;
+                                let evaled = obj.evaluate();
                                 if (evaled) {
                                     let frag = document.createDocumentFragment();
                                     //create element
@@ -398,6 +384,7 @@ class DomNode {
                                     let newObj = new DomNode(newElement).value;
                                     newObj.data = obj.data;
                                     newObj.methods = obj.methods;
+                                    newObj.parent = obj;
                                     frag.appendChild(newObj.initialize());
                                     //save element ids
                                     let elid = getElid(`if${handler.toString()}`);
@@ -411,11 +398,10 @@ class DomNode {
                                     return obj.element;
                                 }
                             }
-                        }(groups[1], groups[2]);
+                        }(groups[1]);
                         obj['update'] = function (handler, expr) {
                             return function () {
                                 let evaled = DomNode.evalWithContext(expr)(obj.data);
-                                obj.parent['if_expr'] = evaled;
                                 let elid = obj.elids[0];
                                 //replace elements in the DOM (identified by element keys)
                                 let child = document.querySelector(elid);
@@ -424,26 +410,25 @@ class DomNode {
                         }(groups[1], groups[2]);
                         obj['onchange'] = obj['update'];
                     }
-                    //push to conditional node
-                    //obj['conditions'].push(obj)
+                    //mark obj as 'if' condition
+                    obj['condition'] = 'start_if';
                     continue;
                 }
                 if (attrName === 'data-on-elif') {
                     node.removeAttribute(attrName);
                     //preserve the markup in template
                     obj['template'] = node.outerHTML;
-
-                    //add to conditional node
-                    //let conditional = obj.parent.children[obj.parent.children.length - 1];
-
+                    //elif condition
                     var elif_reg = /\{(.+?\s*):\s*(.+?)\}/g;
                     let groups = elif_reg.exec(attrVal);
                     if (groups != null) {
-                        obj['render'] = function (handler, expr) {
+                        obj['evaluate'] = function(){
+                            let evaled = DomNode.evalWithContext(groups[2])(obj.data);
+                            return evaled;
+                        };
+                        obj['oncreate'] = function (handler) {
                             return function () {
-                                let evaled = DomNode.evalWithContext(expr)(obj.data);
-                                let if_expr = obj.parent['if_expr'];
-                                obj.parent['if_expr'] = !evaled ? if_expr : evaled;
+                                let evaled = obj.evaluate();
                                 if (evaled) {
                                     let frag = document.createDocumentFragment();
                                     //create element
@@ -453,6 +438,7 @@ class DomNode {
                                     let newObj = new DomNode(newElement).value;
                                     newObj.data = obj.data;
                                     newObj.methods = obj.methods;
+                                    newObj.parent = obj;
                                     frag.appendChild(newObj.initialize());
                                     //set element value
                                     obj.element = frag;
@@ -463,34 +449,40 @@ class DomNode {
                                     return obj.element;
                                 }
                             }
-                        }(groups[1], groups[2]);
+                        }(groups[1]);
                     }
+                    //mark obj as 'elif' condition
+                    obj['condition'] = 'else_if';
                     continue;
                 }
                 if (attrName === 'data-on-else') {
                     node.removeAttribute(attrName);
                     //preserve the markup in template
                     obj['template'] = node.outerHTML;
-                    obj['render'] = function (handler, expr) {
+                    //else condition
+                    obj['evaluate'] = function(){
+                        return true;
+                    };
+                    obj['oncreate'] = function (handler, expr) {
                         return function () {
-                            let evaled = obj.parent['if_expr'];
-                            if (!evaled) {
-                                let frag = document.createDocumentFragment();
-                                //create element
-                                let templ = document.createElement('template');
-                                templ.innerHTML = obj.template;
-                                let newElement = templ.content.firstElementChild;
-                                let newObj = new DomNode(newElement).value;
-                                newObj.data = obj.data;
-                                newObj.methods = obj.methods;
-                                frag.appendChild(newObj.initialize());
-                                //set element value
-                                obj.element = frag;
-                                //return element
-                                return obj.element;
-                            }
+                            let frag = document.createDocumentFragment();
+                            //create element
+                            let templ = document.createElement('template');
+                            templ.innerHTML = obj.template;
+                            let newElement = templ.content.firstElementChild;
+                            let newObj = new DomNode(newElement).value;
+                            newObj.data = obj.data;
+                            newObj.methods = obj.methods;
+                            newObj.parent = obj;
+                            frag.appendChild(newObj.initialize());
+                            //set element value
+                            obj.element = frag;
+                            //return element
+                            return obj.element;
                         }
                     }();
+                    //mark obj as 'else' condition
+                    obj['condition'] = 'end_if';
                     continue;
                 }
                 if (attrName === 'data-on-text') {
@@ -526,6 +518,7 @@ class DomNode {
                                 let newObj = new DomNode(newElement).value;
                                 newObj.data = obj.data;
                                 newObj.methods = obj.methods;
+                                newObj.parent = obj;
                                 frag.appendChild(newObj.initialize());
                                 //set element value
                                 obj.element = frag;
@@ -551,8 +544,8 @@ class DomNode {
             while (child != null) {
                 node.removeChild(child);
                 let newChild = new DomNode(child).value;
-                newChild.parent = obj;
                 obj.children.push(newChild);
+                newChild.parent = obj;
                 child = node.firstChild;
             }
         }
@@ -564,26 +557,51 @@ class DomNode {
         }
         if (!obj.render) {
             obj['render'] = function () {
-                if (obj.template && obj.template !== "#text") {
-                    let templ = document.createElement('template');
-                    templ.innerHTML = obj.template;
-                    obj.element = templ.content.firstElementChild;
-                    if (obj.children && obj.children.length) {
-                        for (let i = 0; i < obj.children.length; i++) {
-                            let childElement = obj.children[i];
-                            childElement.data = obj.data;
-                            childElement.methods = obj.methods;
-                            let validElement = childElement.initialize();
-                            //verify element is not null (possible when 'if/elif' condition fails) 
-                            if (validElement) {
-                                obj.element.appendChild(validElement);
+                return function(){
+                    if (obj.template && obj.template !== "#text") {
+                        let templ = document.createElement('template');
+                        templ.innerHTML = obj.template;
+                        obj.element = templ.content.firstElementChild;
+                        if (obj.children && obj.children.length) {
+                            for (let i = 0; i < obj.children.length; i++) {
+                                let child = obj.children[i];
+
+                                if(child.condition){
+                                    let options = [child];
+                                    while(++i < obj.children.length){
+                                        let option = obj.children[i];
+                                        if(option.template === '#text'){
+                                            continue;
+                                        }
+                                        if(!['else_if','end_if'].includes(option.condition)){
+                                            break;
+                                        }
+                                        options.push(obj.children[i]);
+                                    }
+                                    //initialize children
+                                    let matched = options.find(item=>{
+                                        item.data = obj.data;
+                                        item.methods = obj.methods;
+                                        let element = item.render();
+                                        if(item.evaluate()){
+                                            obj.element.appendChild(item.element);
+                                            return true;
+                                        }
+                                    });
+                                }
+                                else{                                
+                                    child.data = obj.data;
+                                    child.methods = obj.methods;
+                                    let newElement = child.initialize();
+                                    obj.element.appendChild(newElement);
+                                }
                             }
                         }
                     }
+                    //return element
+                    return obj.element;
                 }
-                //return element
-                return obj.element;
-            };
+            }();
         }
         //return obj wrapper
         return obj;

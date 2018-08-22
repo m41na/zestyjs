@@ -15,12 +15,17 @@
     <template id="sports-template">
         <ul class="items-list">
             <li class="list-item" data-on-for="sport, index in sports">
-                <span data-on-if="{show: index==0}" style="color:red;display:none;">@{index+1}</span>
-                <span data-on-elif="{show: index==1}" style="color:yellow;display:none;">@{index+1}</span>
+                <span data-on-if="{show: index==0}" style="color:red;">@{index+1}</span>
+                <span data-on-elif="{show: index==1}" style="color:blue;">@{index+1}</span>
                 <span data-on-else style="color:green;" data-on-text="sport.name"></span>
                 <i>- @{sport.name}</i>
             </li>
         </ul>
+        <!-- <div>
+            <p data-on-if="{show: index==0}"><span data-on-if="{show: index%2==1}">RED</span><span data-on-else=>GREEN</span></p>
+            <p data-on-elif="{show: index==1}">index is 1</p>
+            <p data-on-else>index is neither 1 nor 0</p>
+        </div> -->
     </template>
 
     <script type="module">
