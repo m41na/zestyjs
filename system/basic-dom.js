@@ -372,7 +372,7 @@ class DomNode {
                             let evaled = DomNode.evalWithContext(groups[2])(obj.data);
                             return evaled;
                         };
-                        obj['oncreate'] = function (handler) {
+                        obj['render'] = function (handler) {
                             return function () {
                                 let evaled = obj.evaluate();
                                 if (evaled) {
@@ -426,7 +426,7 @@ class DomNode {
                             let evaled = DomNode.evalWithContext(groups[2])(obj.data);
                             return evaled;
                         };
-                        obj['oncreate'] = function (handler) {
+                        obj['render'] = function (handler) {
                             return function () {
                                 let evaled = obj.evaluate();
                                 if (evaled) {
@@ -463,7 +463,7 @@ class DomNode {
                     obj['evaluate'] = function(){
                         return true;
                     };
-                    obj['oncreate'] = function (handler, expr) {
+                    obj['render'] = function (handler, expr) {
                         return function () {
                             let frag = document.createDocumentFragment();
                             //create element
@@ -578,13 +578,13 @@ class DomNode {
                                         }
                                         options.push(obj.children[i]);
                                     }
-                                    //initialize children
-                                    let matched = options.find(item=>{
+                                    //initialize first match
+                                    options.find(item=>{
                                         item.data = obj.data;
                                         item.methods = obj.methods;
                                         let element = item.render();
                                         if(item.evaluate()){
-                                            obj.element.appendChild(item.element);
+                                            obj.element.appendChild(element);
                                             return true;
                                         }
                                     });
