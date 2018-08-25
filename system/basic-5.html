@@ -21,23 +21,28 @@
                 <i>- @{sport.name}</i>
             </li>
         </ul> -->
-        <div>
-            <p data-on-if="{show: index==0}">index is 0</p>
-            <p data-on-elif="{show: index==1}">index is 1</p>
-            <p data-on-else>index is neither 1 nor 0</p>
-        </div>
+        <p data-on-if="{show: index==0}">
+            <ul data-on-for="num in nums">
+                <li>@{index + num}</li>
+            </ul>
+        </p>
+        <p data-on-else>
+            <ul data-on-for="num in nums">
+                <li>@{index + num}</li>
+            </ul>
+        </p>
     </template>
 
     <script type="module">
         //approach 6 - pushing approach5 further - abstraction using class
-        import { DomComponents } from './basic-dom.js';
+        import { DomRender } from './basic-dom.js';
 
         //example with approach6
         var sports = [{ sport: { name: 'Rugby' } }, { sport: { name: 'Soccer' } }, { sport: { name: 'Hockey' } }, { sport: { name: 'Tennis' } }];
         
-        let dom = new DomComponents({
+        let dom = new DomRender({
             template: "sports-template",
-            data: { index: 2 },
+            data: {index: 0, nums: [1,2,3,4]},
             methods: {
                 show(el) {
                     el.style.display = '';

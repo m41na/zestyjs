@@ -181,60 +181,34 @@ class DomNode {
     }
 
     create(node){
-        let getElid = DomNode.selectorId();
         let obj = {};
         obj['data'] = {};
         obj['methods'] = {};
-        obj['elids'] = [];
         obj['parent'] = undefined;
-        obj['oncreate'] = undefined;
-        obj['ondestroy'] = undefined;
         obj['onchange'] = undefined;
-        obj['lifecycle'] = {
-            created: false,
-            mounted: false
-        };
-        obj['initialize'] = function () {
-            if (!obj.lifecycle.created) {
-                if (obj.oncreate) obj.oncreate();
-                obj.lifecycle.created = true;
-
-                let element = obj.render();
-                if (obj.onchange) {
-                    obj.data.observe(obj.onchange);
-                }
-                return element;
+        obj['tagname'] = node.tagName || node.nodeName;
+        obj['load'] = function () {
+            let element = obj.create();
+            if (obj.onchange) {
+                obj.data.observe(obj.onchange);
             }
-        };
-        obj['onmount'] = function () {
-            if (!obj.lifecycle.mounted) {
-                if (obj.selector) {
-                    obj.element = document.querySelector(obj.selector);
-                }
-                obj.lifecycle.mounted = true;
-
-                if (obj.children) {
-                    for (let i = 0; i < obj.children.length; i++) {
-                        let childElement = obj.children[i];
-                        childElement.onmount();
-                    }
-                }
-            }
+            return element;
         };
         if (node.nodeType === 3) {
             let textVal = node.textContent;
             let expr_regex = /@\{(.+?)\}/g;
             let groups = expr_regex.exec(textVal);
             if (groups != null) {
-                obj['render'] = function (expr) {
+                obj['create'] = function (expr) {
                     return function () {
                         let evaled = DomNode.evalWithContext(expr)(obj.data);
                         node.textContent = textVal.replace(/(@\{.+?\})/g, evaled);
+                        obj["element"] = node;
                         //return element
                         return obj.element;
                     }
                 }(groups[1]);
-                obj['update'] = obj['render'];
+                obj['update'] = obj['create'];
                 obj['onchange'] = obj['update'];
             }
         }
@@ -247,15 +221,17 @@ class DomNode {
 
                 let groups = /@\{(.+?)\}/g.exec(attrVal);
                 if (groups != null) {
-                    obj['render'].push(function (expr) {
+                    obj['create'].push(function (expr) {
                         return function () {
                             let evaled = DomNode.evalWithContext(expr)(obj.data);
                             if (obj.element.nodeType == 1 && obj.element.hasAttribute(attrName)) {
                                 obj.element.setAttribute(attrName, attrVal.replace(/(@\{.+?\})/g, evaled));
                             }
+                            //return element
+                            return obj.element;
                         }
                     }(groups[1]));
-                    obj['update'] = obj['render'];
+                    obj['update'] = obj['create'];
                     obj['onchange'] = obj['update'];
                 }
 
@@ -266,7 +242,7 @@ class DomNode {
                     var for_reg = /(.+?)(,\s*(\b.+?))?\s*in\s*(.+)/g;
                     let groups = for_reg.exec(attrVal);
                     if (groups != null) {
-                        obj['render'] = function (key, index, items) {
+                        obj['create'] = function (key, index, items) {
                             return function () {
                                 let for_ctx = DomNode.evalWithContext(items)(obj.data);
                                 let frag = document.createDocumentFragment();
@@ -283,12 +259,8 @@ class DomNode {
                                     newObj.data = ctx;
                                     newObj.methods = obj.methods;
                                     newObj.parent = obj;
-                                    //initialize newElement
-                                    frag.appendChild(newObj.initialize());
-                                    //save element ids
-                                    let elid = getElid(`f${key}${i}`);
-                                    obj['elids'].push(`[data-elid='${elid}']`);
-                                    newObj.element.dataset.elid = elid;
+                                    //load newElement
+                                    frag.appendChild(newObj.load());
                                 }
                                 obj.element = frag;
                                 //return element
@@ -298,7 +270,7 @@ class DomNode {
                         obj['update'] = function (key, index, items) {
                             return function () {
                                 let old = obj.elids.splice(0, obj.elids.length);
-                                let elements = obj.render(key, index, items);
+                                let elements = obj.create(key, index, items);
                                 //replace elements in the DOM (identified by element keys)
                                 let parent;
                                 while (old.length > 0) {
@@ -321,7 +293,7 @@ class DomNode {
                     var if_reg = /\{(.+?\s*):\s*(.+?)\}/g;
                     let groups = if_reg.exec(attrVal);
                     if (groups != null) {
-                        obj['render'] = function (handler, expr) {
+                        obj['create'] = function (handler, expr) {
                             return function () {
                                 let evaled = DomNode.evalWithContext(expr)(obj.data);
                                 if (evaled) {
@@ -333,11 +305,7 @@ class DomNode {
                                     let newObj = new DomNode(newElement).value;
                                     newObj.data = obj.data;
                                     newObj.methods = obj.methods;
-                                    frag.appendChild(newObj.initialize());
-                                    //save element ids
-                                    let elid = getElid(`sho${handler.toString()}`);
-                                    obj['elids'].push(`[data-elid='${elid}']`);
-                                    newObj.element.dataset.elid = elid;
+                                    frag.appendChild(newObj.load());
                                     //invoke handler
                                     newObj.methods[handler].call(newObj, frag.firstElementChild);
                                     //set element value
@@ -372,7 +340,7 @@ class DomNode {
                             let evaled = DomNode.evalWithContext(groups[2])(obj.data);
                             return evaled;
                         };
-                        obj['render'] = function (handler) {
+                        obj['create'] = function (handler) {
                             return function () {
                                 let evaled = obj.evaluate();
                                 if (evaled) {
@@ -385,18 +353,17 @@ class DomNode {
                                     newObj.data = obj.data;
                                     newObj.methods = obj.methods;
                                     newObj.parent = obj;
-                                    frag.appendChild(newObj.initialize());
-                                    //save element ids
-                                    let elid = getElid(`if${handler.toString()}`);
-                                    obj['elids'].push(`[data-elid='${elid}']`);
-                                    newObj.element.dataset.elid = elid;
+                                    frag.appendChild(newObj.load());
                                     //invoke handler
                                     newObj.methods[handler].call(newObj, frag.firstElementChild);
                                     //set element value
                                     obj.element = frag;
-                                    //return element
-                                    return obj.element;
                                 }
+                                else{
+                                    obj["element"] = node;
+                                }
+                                //return element
+                                return obj.element;
                             }
                         }(groups[1]);
                         obj['update'] = function (handler, expr) {
@@ -426,7 +393,7 @@ class DomNode {
                             let evaled = DomNode.evalWithContext(groups[2])(obj.data);
                             return evaled;
                         };
-                        obj['render'] = function (handler) {
+                        obj['create'] = function (handler) {
                             return function () {
                                 let evaled = obj.evaluate();
                                 if (evaled) {
@@ -439,15 +406,17 @@ class DomNode {
                                     newObj.data = obj.data;
                                     newObj.methods = obj.methods;
                                     newObj.parent = obj;
-                                    frag.appendChild(newObj.initialize());
+                                    frag.appendChild(newObj.load());
+                                    //invoke handler
+                                    obj.methods[handler].call(obj, frag.firstElementChild);
                                     //set element value
                                     obj.element = frag;
-                                    //invoke handler
-                                    //let method = new Function('frag', 'return ' + handler + '(frag);');
-                                    obj.methods[handler].call(obj, frag.firstElementChild);
-                                    //return element
-                                    return obj.element;
                                 }
+                                else {
+                                    obj["element"] = node;
+                                }
+                                //return element
+                                return obj.element;
                             }
                         }(groups[1]);
                     }
@@ -463,7 +432,7 @@ class DomNode {
                     obj['evaluate'] = function(){
                         return true;
                     };
-                    obj['render'] = function (handler, expr) {
+                    obj['create'] = function (handler, expr) {
                         return function () {
                             let frag = document.createDocumentFragment();
                             //create element
@@ -474,7 +443,7 @@ class DomNode {
                             newObj.data = obj.data;
                             newObj.methods = obj.methods;
                             newObj.parent = obj;
-                            frag.appendChild(newObj.initialize());
+                            frag.appendChild(newObj.load());
                             //set element value
                             obj.element = frag;
                             //return element
@@ -487,7 +456,11 @@ class DomNode {
                 }
                 if (attrName === 'data-on-text') {
                     node.removeAttribute(attrName);
-                    obj['render'] = function (expr) {
+
+                    node.append(`@{${attrVal}}`);
+                    obj.element = node;
+
+                    obj['update'] = function (expr) {
                         return function () {
                             let evaled = DomNode.evalWithContext(expr)(obj.data);
                             while (obj.element.hasChildNodes()) {
@@ -498,7 +471,7 @@ class DomNode {
                             return obj.element;
                         }
                     }(attrVal);
-                    obj['onchange'] = obj['render'];
+                    obj['onchange'] = obj['update'];
                     continue;
                 }
                 if (attrName === 'data-on-event') {
@@ -508,7 +481,7 @@ class DomNode {
                     var event_reg = /(\{(.+?)\s*:\s*(.+?)\})/g;
                     let groups = event_reg.exec(attrVal);
                     if (groups != null) {
-                        obj['render'] = function (event, handler) {
+                        obj['create'] = function (event, handler) {
                             return function () {
                                 let frag = document.createDocumentFragment();
                                 //create element
@@ -519,7 +492,7 @@ class DomNode {
                                 newObj.data = obj.data;
                                 newObj.methods = obj.methods;
                                 newObj.parent = obj;
-                                frag.appendChild(newObj.initialize());
+                                frag.appendChild(newObj.load());
                                 //set element value
                                 obj.element = frag;
                                 obj.element.firstElementChild.addEventListener(event, obj.methods[handler]);
@@ -527,7 +500,7 @@ class DomNode {
                                 return obj.element;
                             }
                         }(groups[2], groups[3]);
-                        obj['onchange'] = obj['render'];
+                        obj['onchange'] = obj['create'];
                     }
                 }
                 obj.attributes.push({
@@ -550,55 +523,32 @@ class DomNode {
             }
         }
 
-        //set 'template', 'element' and 'render' values
-        obj['element'] = node;
+        //set 'template', 'element' and 'create' values
         if (!obj.template) {
             obj['template'] = node.outerHTML ? node.outerHTML : node.nodeName;
         }
-        if (!obj.render) {
-            obj['render'] = function () {
+        if (!obj.create) {
+            obj['create'] = function () {
                 return function(){
-                    if (obj.template && obj.template !== "#text") {
-                        let templ = document.createElement('template');
-                        templ.innerHTML = obj.template;
-                        obj.element = templ.content.firstElementChild;
-                        if (obj.children && obj.children.length) {
-                            for (let i = 0; i < obj.children.length; i++) {
-                                let child = obj.children[i];
-
-                                if(child.condition){
-                                    let options = [child];
-                                    while(++i < obj.children.length){
-                                        let option = obj.children[i];
-                                        if(option.template === '#text'){
-                                            continue;
-                                        }
-                                        if(!['else_if','end_if'].includes(option.condition)){
-                                            break;
-                                        }
-                                        options.push(obj.children[i]);
-                                    }
-                                    //initialize first match
-                                    options.find(item=>{
-                                        item.data = obj.data;
-                                        item.methods = obj.methods;
-                                        let element = item.render();
-                                        if(item.evaluate()){
-                                            obj.element.appendChild(element);
-                                            return true;
-                                        }
-                                    });
-                                }
-                                else{                                
+                    if (obj.template){
+                        if(obj.template === '#text'){
+                            obj["element"] = node;
+                        }
+                        else {
+                            let templ = document.createElement("template");
+                            templ.innerHTML = obj.template;
+                            obj.element = templ.content.firstElementChild;
+                            if (obj.children && obj.children.length) {
+                                for (let i = 0; i < obj.children.length; i++) {
+                                    let child = obj.children[i];
                                     child.data = obj.data;
                                     child.methods = obj.methods;
-                                    let newElement = child.initialize();
+                                    let newElement = child.load();
                                     obj.element.appendChild(newElement);
                                 }
                             }
                         }
                     }
-                    //return element
                     return obj.element;
                 }
             }();
@@ -608,7 +558,7 @@ class DomNode {
     }
 }
 
-class DomComponents{
+class DomRender{
 
     constructor(config){
         this.tree = this.locate(config.template);
@@ -625,12 +575,57 @@ class DomComponents{
         return nodeObj;        
     }
 
+    render(obj){
+        if (obj.template && obj.template !== "#text") {
+            let templ = document.createElement('template');
+            templ.innerHTML = obj.template;
+            obj.element = templ.content.firstElementChild;
+            if (obj.children && obj.children.length) {
+                for (let i = 0; i < obj.children.length; i++) {
+                    let child = obj.children[i];
+
+                    if (child.condition) {
+                        let options = [child];
+                        while (++i < obj.children.length) {
+                            let option = obj.children[i];
+                            if (option.template === '#text') {
+                                continue;
+                            }
+                            if (!['else_if', 'end_if'].includes(option.condition)) {
+                                break;
+                            }
+                            options.push(obj.children[i]);
+                        }
+                        //load first match
+                        options.find(item => {
+                            item.data = obj.data;
+                            item.methods = obj.methods;
+                            let element = item.create();
+                            if (item.evaluate()) {
+                                obj.element.appendChild(element);
+                                return true;
+                            }
+                        });
+                    }
+                    else {
+                        child.data = obj.data;
+                        child.methods = obj.methods;
+                        let newElement = child.load();
+                        obj.element.appendChild(newElement);
+                    }
+                }
+            }
+        }
+        //return element
+        return obj;
+    }
+
     mount(selector){
-        let element = this.tree.initialize();
+        let node = this.tree.load();
+        const element = this.render(node);
         document.querySelector(selector).replaceWith(element);
-        this.tree.onmount();
     }
 }
 
 
-export {DomModel, DomNode, DomComponents};
+export { DomModel, DomNode, DomRender};
