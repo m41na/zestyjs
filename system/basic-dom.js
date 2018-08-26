@@ -188,11 +188,11 @@ class DomNode {
         obj['onchange'] = undefined;
         obj['tagname'] = node.tagName || node.nodeName;
         obj['load'] = function () {
-            let element = obj.create();
+            let objWrap = obj.create();
             if (obj.onchange) {
                 obj.data.observe(obj.onchange);
             }
-            return element;
+            return objWrap;
         };
         if (node.nodeType === 3) {
             let textVal = node.textContent;
@@ -204,8 +204,8 @@ class DomNode {
                         let evaled = DomNode.evalWithContext(expr)(obj.data);
                         node.textContent = textVal.replace(/(@\{.+?\})/g, evaled);
                         obj["element"] = node;
-                        //return element
-                        return obj.element;
+                        //return expanded
+                        return obj;
                     }
                 }(groups[1]);
                 obj['update'] = obj['create'];
@@ -227,8 +227,8 @@ class DomNode {
                             if (obj.element.nodeType == 1 && obj.element.hasAttribute(attrName)) {
                                 obj.element.setAttribute(attrName, attrVal.replace(/(@\{.+?\})/g, evaled));
                             }
-                            //return element
-                            return obj.element;
+                            //return expanded
+                            return obj;
                         }
                     }(groups[1]));
                     obj['update'] = obj['create'];
@@ -260,11 +260,11 @@ class DomNode {
                                     newObj.methods = obj.methods;
                                     newObj.parent = obj;
                                     //load newElement
-                                    frag.appendChild(newObj.load());
+                                    frag.appendChild(newObj.load().element);
                                 }
                                 obj.element = frag;
-                                //return element
-                                return obj.element;
+                                //return expanded
+                                return obj;
                             }
                         }(groups[1], groups[3], groups[4]);
                         obj['update'] = function (key, index, items) {
@@ -305,13 +305,14 @@ class DomNode {
                                     let newObj = new DomNode(newElement).value;
                                     newObj.data = obj.data;
                                     newObj.methods = obj.methods;
-                                    frag.appendChild(newObj.load());
+                                    newObj.parent = obj;
+                                    frag.appendChild(newObj.load().element);
                                     //invoke handler
                                     newObj.methods[handler].call(newObj, frag.firstElementChild);
                                     //set element value
                                     obj.element = frag;
-                                    //return element
-                                    return obj.element;
+                                    //return expanded
+                                    return obj;
                                 }
                             }
                         }(groups[1], groups[2]);
@@ -353,7 +354,7 @@ class DomNode {
                                     newObj.data = obj.data;
                                     newObj.methods = obj.methods;
                                     newObj.parent = obj;
-                                    frag.appendChild(newObj.load());
+                                    frag.appendChild(newObj.load().element);
                                     //invoke handler
                                     newObj.methods[handler].call(newObj, frag.firstElementChild);
                                     //set element value
@@ -362,8 +363,8 @@ class DomNode {
                                 else{
                                     obj["element"] = node;
                                 }
-                                //return element
-                                return obj.element;
+                                //return expanded
+                                return obj;
                             }
                         }(groups[1]);
                         obj['update'] = function (handler, expr) {
@@ -406,7 +407,7 @@ class DomNode {
                                     newObj.data = obj.data;
                                     newObj.methods = obj.methods;
                                     newObj.parent = obj;
-                                    frag.appendChild(newObj.load());
+                                    frag.appendChild(newObj.load().element);
                                     //invoke handler
                                     obj.methods[handler].call(obj, frag.firstElementChild);
                                     //set element value
@@ -415,8 +416,8 @@ class DomNode {
                                 else {
                                     obj["element"] = node;
                                 }
-                                //return element
-                                return obj.element;
+                                //return expanded
+                                return obj;
                             }
                         }(groups[1]);
                     }
@@ -443,11 +444,11 @@ class DomNode {
                             newObj.data = obj.data;
                             newObj.methods = obj.methods;
                             newObj.parent = obj;
-                            frag.appendChild(newObj.load());
+                            frag.appendChild(newObj.load().element);
                             //set element value
                             obj.element = frag;
-                            //return element
-                            return obj.element;
+                            //return expanded
+                            return obj;
                         }
                     }();
                     //mark obj as 'else' condition
@@ -467,8 +468,8 @@ class DomNode {
                                 obj.element.removeChild(obj.element.lastChild);
                             }
                             obj.element.append(evaled);
-                            //return element
-                            return obj.element;
+                            //return expanded
+                            return obj;
                         }
                     }(attrVal);
                     obj['onchange'] = obj['update'];
@@ -492,12 +493,12 @@ class DomNode {
                                 newObj.data = obj.data;
                                 newObj.methods = obj.methods;
                                 newObj.parent = obj;
-                                frag.appendChild(newObj.load());
+                                frag.appendChild(newObj.load().element);
                                 //set element value
                                 obj.element = frag;
                                 obj.element.firstElementChild.addEventListener(event, obj.methods[handler]);
-                                //return element
-                                return obj.element;
+                                //return expanded
+                                return obj;
                             }
                         }(groups[2], groups[3]);
                         obj['onchange'] = obj['create'];
@@ -543,17 +544,19 @@ class DomNode {
                                     let child = obj.children[i];
                                     child.data = obj.data;
                                     child.methods = obj.methods;
-                                    let newElement = child.load();
-                                    obj.element.appendChild(newElement);
+                                    child.parent = obj;
+                                    let objWrap = child.load();
+                                    obj.element.appendChild(objWrap.element);
                                 }
                             }
                         }
                     }
-                    return obj.element;
+                    //return expanded
+                    return obj;
                 }
             }();
         }
-        //return obj wrapper
+        //return expanded object
         return obj;
     }
 }
@@ -576,43 +579,35 @@ class DomRender{
     }
 
     render(obj){
-        if (obj.template && obj.template !== "#text") {
-            let templ = document.createElement('template');
-            templ.innerHTML = obj.template;
-            obj.element = templ.content.firstElementChild;
-            if (obj.children && obj.children.length) {
-                for (let i = 0; i < obj.children.length; i++) {
-                    let child = obj.children[i];
+        if (obj.children && obj.children.length) {
+            for (let i = 0; i < obj.children.length; i++) {
+                let child = obj.children[i];
 
-                    if (child.condition) {
-                        let options = [child];
-                        while (++i < obj.children.length) {
-                            let option = obj.children[i];
-                            if (option.template === '#text') {
-                                continue;
-                            }
-                            if (!['else_if', 'end_if'].includes(option.condition)) {
-                                break;
-                            }
-                            options.push(obj.children[i]);
+                if (child.condition) {
+                    let options = [child];
+                    while (++i < obj.children.length) {
+                        let option = obj.children[i];
+                        if (option.template === '#text') {
+                            continue;
                         }
-                        //load first match
-                        options.find(item => {
-                            item.data = obj.data;
-                            item.methods = obj.methods;
-                            let element = item.create();
-                            if (item.evaluate()) {
-                                obj.element.appendChild(element);
-                                return true;
-                            }
-                        });
+                        if (!['else_if', 'end_if'].includes(option.condition)) {
+                            break;
+                        }
+                        options.push(obj.children[i]);
                     }
-                    else {
-                        child.data = obj.data;
-                        child.methods = obj.methods;
-                        let newElement = child.load();
-                        obj.element.appendChild(newElement);
-                    }
+                    //load first match
+                    options.find(item => {
+                        item.data = obj.data;
+                        item.methods = obj.methods;
+                        let element = item.create().element;
+                        return item.evaluate();
+                    });
+                }
+                else {
+                    child.data = obj.data;
+                    child.methods = obj.methods;
+                    let newElement = child.load().element;
+                    obj.element.appendChild(newElement);
                 }
             }
         }
@@ -621,8 +616,8 @@ class DomRender{
     }
 
     mount(selector){
-        let node = this.tree.load();
-        const element = this.render(node);
+        let nodeObj = this.tree.load();
+        const element = this.render(nodeObj);
         document.querySelector(selector).replaceWith(element);
     }
 }

@@ -21,16 +21,23 @@
                 <i>- @{sport.name}</i>
             </li>
         </ul> -->
-        <p data-on-if="{show: index==0}">
-            <ul data-on-for="num in nums">
-                <li>@{index + num}</li>
-            </ul>
-        </p>
-        <p data-on-else>
-            <ul data-on-for="num in nums">
-                <li>@{index + num}</li>
-            </ul>
-        </p>
+        <div>
+            <p data-on-if="{show: index==0}">
+                <ul data-on-for="num, i in nums">
+                    <li style="color:red">@{num + i * 2}</li>
+                </ul>
+            </p>
+            <p data-on-elif="{show: index==1}">
+                <ul data-on-for="num in nums">
+                    <li style="color:blue;font-weight:bold">@{num + i * 3}</li>
+                </ul>
+            </p>
+            <p data-on-else>
+                <ul data-on-for="num in nums">
+                    <li style="color:green">@{num + i * 4}</li>
+                </ul>
+            </p>
+        </div>
     </template>
 
     <script type="module">
@@ -42,7 +49,7 @@
         
         let dom = new DomRender({
             template: "sports-template",
-            data: {index: 0, nums: [1,2,3,4]},
+            data: {index: 0, nums: [{num:1},{num:2},{num:3}]},
             methods: {
                 show(el) {
                     el.style.display = '';
